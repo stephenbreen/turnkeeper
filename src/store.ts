@@ -139,7 +139,7 @@ export type Store = EncounterState & Actions
 // Durable fields written to localStorage.
 const PERSIST_KEYS = [
   'combatants',
-  'currentTurnIndex',
+  'currentCombatantId',
   'round',
   'timerSeconds',
   'timerRemaining',
@@ -156,7 +156,7 @@ const PERSIST_KEYS = [
 // the player screen entirely); `triggerResults` is synced but not persisted.
 const SYNC_KEYS = [
   'combatants',
-  'currentTurnIndex',
+  'currentCombatantId',
   'round',
   'timerSeconds',
   'timerRemaining',
@@ -207,6 +207,40 @@ function buildCombatant(c: Partial<Combatant>): Combatant {
   }
 }
 
+// Shared by nextTurn and the timer's auto-advance: move the turn marker to
+// the next combatant in initiative order, wrapping (and bumping the round
+// counter) at the end of the list. perTurn fired-trigger lists reset on every
+// turn change; perRound ones only when the round number changes. Timed
+// conditions tick down for the combatant whose turn is starting.
+function advanceTurn(s: EncounterState): Partial<EncounterState> {
+  if (s.combatants.length === 0) {
+    return {
+      currentCombatantId: null,
+      timerRemaining: s.timerSeconds,
+      timerRunning: false,
+    }
+  }
+  const curIdx = s.combatants.findIndex((c) => c.id === s.currentCombatantId)
+  // No current combatant (combat hasn't started): land on the top of the
+  // order without bumping the round.
+  const starting = curIdx < 0 ? 0 : (curIdx + 1) % s.combatants.length
+  const round = curIdx >= 0 && starting === 0 ? s.round + 1 : s.round
+  const roundChanged = round !== s.round
+  const startingId = s.combatants[starting].id
+  return {
+    currentCombatantId: startingId,
+    round,
+    timerRemaining: s.timerSeconds,
+    timerRunning: false,
+    combatants: s.combatants.map((c) => ({
+      ...c,
+      firedTriggers: [],
+      firedTriggersRound: roundChanged ? [] : c.firedTriggersRound,
+      conditions: c.id === startingId ? tickConditions(c.conditions) : c.conditions,
+    })),
+  }
+}
+
 // One-time handoff from the pre-rename storage key so an in-flight encounter
 // survives the rebrand. Idempotent: only copies when the new key is absent.
 try {
@@ -240,6 +274,9 @@ export const useStore = create<Store>()(
           }
           return {
             combatants: sortByInit([...s.combatants, newCombatant]),
+            // First combatant added becomes current, matching the old
+            // index-0 behaviour; later adds never move the marker.
+            currentCombatantId: s.currentCombatantId ?? newCombatant.id,
             triggerResults: results.length
               ? [...s.triggerResults, ...results]
               : s.triggerResults,
@@ -250,9 +287,13 @@ export const useStore = create<Store>()(
       // Deliberately does NOT fire `combatantAdded` triggers — a bulk party
       // import shouldn't roll a reinforcements table once per player.
       addCombatants: (list) =>
-        set((s) => ({
-          combatants: sortByInit([...s.combatants, ...list.map(buildCombatant)]),
-        })),
+        set((s) => {
+          const combatants = sortByInit([...s.combatants, ...list.map(buildCombatant)])
+          return {
+            combatants,
+            currentCombatantId: s.currentCombatantId ?? combatants[0]?.id ?? null,
+          }
+        }),
 
       // Duplicate a combatant as a fresh full-HP copy (a reinforcement): same
       // sheet, auto-incremented name, no carried-over combat state. Like
@@ -273,7 +314,10 @@ export const useStore = create<Store>()(
             nameVisibleToPlayers: c.nameVisibleToPlayers,
             notes: c.notes,
           })
-          return { combatants: sortByInit([...s.combatants, copy]) }
+          return {
+            combatants: sortByInit([...s.combatants, copy]),
+            currentCombatantId: s.currentCombatantId ?? copy.id,
+          }
         }),
 
       updateCombatant: (id, patch) =>
@@ -285,12 +329,18 @@ export const useStore = create<Store>()(
 
       removeCombatant: (id) =>
         set((s) => {
+          const idx = s.combatants.findIndex((c) => c.id === id)
+          if (idx < 0) return {}
           const combatants = s.combatants.filter((c) => c.id !== id)
-          const currentTurnIndex = Math.min(
-            s.currentTurnIndex,
-            Math.max(0, combatants.length - 1)
-          )
-          return { combatants, currentTurnIndex }
+          let currentCombatantId = s.currentCombatantId
+          if (s.currentCombatantId === id) {
+            // Removing whoever is on turn: hand the turn to the next
+            // combatant in order (the one that slides into this slot), or
+            // last / none if the list runs out.
+            currentCombatantId =
+              combatants[Math.min(idx, combatants.length - 1)]?.id ?? null
+          }
+          return { combatants, currentCombatantId }
         }),
 
       applyDamage: (id, amount) => {
@@ -435,38 +485,19 @@ export const useStore = create<Store>()(
       nextTurn: () =>
         set((s) => {
           if (s.combatants.length === 0) return s
-          const next = (s.currentTurnIndex + 1) % s.combatants.length
-          const round = next === 0 ? s.round + 1 : s.round
-          const roundChanged = round !== s.round
-          const startingId = s.combatants[next]?.id
-          return {
-            currentTurnIndex: next,
-            round,
-            timerRemaining: s.timerSeconds,
-            timerRunning: false,
-            // perTurn triggers clear on any turn change; perRound only when the
-            // round number changes. Timed conditions tick down for the combatant
-            // whose turn is starting.
-            combatants: s.combatants.map((c) => ({
-              ...c,
-              firedTriggers: [],
-              firedTriggersRound: roundChanged ? [] : c.firedTriggersRound,
-              conditions: c.id === startingId ? tickConditions(c.conditions) : c.conditions,
-            })),
-          }
+          return advanceTurn(s)
         }),
 
       previousTurn: () =>
         set((s) => {
           if (s.combatants.length === 0) return s
-          const prev =
-            s.currentTurnIndex === 0
-              ? s.combatants.length - 1
-              : s.currentTurnIndex - 1
-          const round = s.currentTurnIndex === 0 ? Math.max(1, s.round - 1) : s.round
+          const curIdx = s.combatants.findIndex((c) => c.id === s.currentCombatantId)
+          const idx = curIdx < 0 ? 0 : curIdx
+          const prev = idx === 0 ? s.combatants.length - 1 : idx - 1
+          const round = idx === 0 ? Math.max(1, s.round - 1) : s.round
           const roundChanged = round !== s.round
           return {
-            currentTurnIndex: prev,
+            currentCombatantId: s.combatants[prev]?.id ?? null,
             round,
             timerRemaining: s.timerSeconds,
             timerRunning: false,
@@ -550,24 +581,8 @@ export const useStore = create<Store>()(
             if (s.combatants.length === 0) {
               return { timerRemaining: s.timerSeconds, timerRunning: false }
             }
-            const next = (s.currentTurnIndex + 1) % s.combatants.length
-            const round = next === 0 ? s.round + 1 : s.round
-            const roundChanged = round !== s.round
-            const startingId = s.combatants[next]?.id
-            return {
-              currentTurnIndex: next,
-              round,
-              timerRemaining: s.timerSeconds,
-              timerRunning: false,
-              // perTurn triggers reset on turn change; perRound on round change;
-              // timed conditions tick for the combatant whose turn starts.
-              combatants: s.combatants.map((c) => ({
-                ...c,
-                firedTriggers: [],
-                firedTriggersRound: roundChanged ? [] : c.firedTriggersRound,
-                conditions: c.id === startingId ? tickConditions(c.conditions) : c.conditions,
-              })),
-            }
+            // Auto-advance uses the exact same path as the Next button.
+            return advanceTurn(s)
           }
           return { timerRemaining: remaining }
         }),
@@ -721,9 +736,12 @@ export const useStore = create<Store>()(
           const scene = s.scenes.find((x) => x.id === sceneId)
           const enc = scene?.encounters.find((e) => e.id === encounterId)
           if (!enc) return s
+          const combatants = sortByInit(expandRoster(enc.roster))
           return {
-            combatants: sortByInit(expandRoster(enc.roster)),
-            currentTurnIndex: 0,
+            combatants,
+            // Top of the order goes on turn immediately (matches the old
+            // index-0 behaviour); the marker now survives later re-sorts.
+            currentCombatantId: combatants[0]?.id ?? null,
             round: 1,
             timerRemaining: s.timerSeconds,
             timerRunning: false,
@@ -775,7 +793,7 @@ export const useStore = create<Store>()(
     }),
     {
       name: 'turnkeeper-encounter',
-      version: 4,
+      version: 5,
       storage: createJSONStorage(() => localStorage),
       // Persist only the durable fields. Keep this list and SYNC_KEYS (below)
       // in step when adding state — see CLAUDE.md.

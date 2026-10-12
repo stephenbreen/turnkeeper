@@ -11,7 +11,7 @@ import { classLabel } from './data/playerClasses'
 
 export default function PlayerView() {
   const combatants = useStore((s) => s.combatants)
-  const currentIdx = useStore((s) => s.currentTurnIndex)
+  const currentId = useStore((s) => s.currentCombatantId)
   const round = useStore((s) => s.round)
   const timerRemaining = useStore((s) => s.timerRemaining)
   const timerSeconds = useStore((s) => s.timerSeconds)
@@ -22,7 +22,7 @@ export default function PlayerView() {
 
   useEffect(() => {
     activeRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-  }, [currentIdx, combatants.length])
+  }, [currentId, combatants.length])
 
   const danger = timerRemaining <= 10 && timerRunning
 
@@ -73,8 +73,8 @@ export default function PlayerView() {
           </div>
         ) : (
           <div className="space-y-2 max-w-5xl mx-auto">
-            {combatants.map((c, i) => {
-              const isCurrent = i === currentIdx
+            {combatants.map((c) => {
+              const isCurrent = c.id === currentId
               const name = c.nameVisibleToPlayers ? c.name : '???'
               const status = hpStatus(c)
               return (

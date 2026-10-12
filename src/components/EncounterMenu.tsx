@@ -34,7 +34,7 @@ export default function EncounterMenu({
     const {
       combatants,
       round,
-      currentTurnIndex,
+      currentCombatantId,
       triggers,
       strategyLabelNames,
       tables,
@@ -43,7 +43,7 @@ export default function EncounterMenu({
     const payload = {
       combatants,
       round,
-      currentTurnIndex,
+      currentCombatantId,
       triggers,
       strategyLabelNames,
       tables,
@@ -105,14 +105,20 @@ export default function EncounterMenu({
       // arrays are brought up to the current schema.
       const norm = migratePersisted(data) as Record<string, unknown>
       const combatants = Array.isArray(norm.combatants) ? norm.combatants : []
-      const rawIndex =
-        typeof norm.currentTurnIndex === 'number' ? norm.currentTurnIndex : 0
       const triggers = Array.isArray(norm.triggers) ? norm.triggers : []
+      // migratePersisted already mapped any old positional index to an id;
+      // verify the id actually exists so a foreign file can't strand the
+      // turn marker.
+      const importedId = norm.currentCombatantId
+      const currentCombatantId =
+        typeof importedId === 'string' &&
+        combatants.some((c) => (c as { id?: string }).id === importedId)
+          ? importedId
+          : null
       const next: Partial<EncounterState> = {
         combatants: combatants as EncounterState['combatants'],
         round: typeof norm.round === 'number' ? norm.round : 1,
-        // Clamp the turn index so an imported file can't point past the end.
-        currentTurnIndex: Math.min(Math.max(0, rawIndex), Math.max(0, combatants.length - 1)),
+        currentCombatantId,
         triggers: (triggers.length
           ? triggers
           : state.triggers) as EncounterState['triggers'],

@@ -9,7 +9,7 @@ export default function InitiativeList({
   setExpandedId: (id: string | null) => void
 }) {
   const combatants = useStore((s) => s.combatants)
-  const currentIdx = useStore((s) => s.currentTurnIndex)
+  const currentId = useStore((s) => s.currentCombatantId)
 
   if (combatants.length === 0) {
     return (
@@ -21,11 +21,11 @@ export default function InitiativeList({
 
   return (
     <div>
-      {combatants.map((c, i) => (
+      {combatants.map((c) => (
         <CombatantCard
           key={c.id}
           c={c}
-          isCurrent={i === currentIdx}
+          isCurrent={c.id === currentId}
           expanded={expandedId === c.id}
           onToggle={() => setExpandedId(expandedId === c.id ? null : c.id)}
         />

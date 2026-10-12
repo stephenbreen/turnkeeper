@@ -48,7 +48,7 @@ export const buildDefaultEncounter = (): EncounterState => {
   const { scenes, statblocks } = buildPresetLibrary()
   return {
     combatants: [],
-    currentTurnIndex: 0,
+    currentCombatantId: null,
     round: 1,
     timerSeconds: 60,
     timerRemaining: 60,

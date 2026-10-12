@@ -18,7 +18,7 @@ type Tab = 'initiative' | 'dice' | 'tables' | 'settings'
 export default function App() {
   const round = useStore((s) => s.round)
   const combatants = useStore((s) => s.combatants)
-  const currentIdx = useStore((s) => s.currentTurnIndex)
+  const currentId = useStore((s) => s.currentCombatantId)
   const nextTurn = useStore((s) => s.nextTurn)
   const previousTurn = useStore((s) => s.previousTurn)
   const setTimerRunning = useStore((s) => s.setTimerRunning)
@@ -46,7 +46,7 @@ export default function App() {
     }
   }, [rightOpen])
 
-  const current = combatants[currentIdx]
+  const current = combatants.find((c) => c.id === currentId) ?? null
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

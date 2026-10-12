@@ -3,14 +3,16 @@ import { buildPresetLibrary } from './presets'
 import type { EncounterState } from '../types'
 
 // Bring a persisted encounter blob up to the current schema. Idempotent and
-// version-agnostic — safe to run on any older save. Two historical shapes:
+// version-agnostic — safe to run on any older save. Historical shapes:
 //
 //   v0: hard-coded `thresholds: number[]` + `builtIn` injury tables +
 //       `combatant.firedThresholds`.
 //   v1: first-class `triggers` with a boolean `oncePerTurn`.
-//
-// Current: triggers carry `dedupe: 'always' | 'perTurn' | 'perRound'` and
-// combatants carry both `firedTriggers` (per-turn) and `firedTriggersRound`.
+//   v2: (dedupe cadences — no persisted-shape change)
+//   v3: `scenes` / `statblocks` prep library.
+//   v4: `tempHP`, `deathSaves`, `concentration`, timed conditions.
+//   v5: positional `currentTurnIndex` → `currentCombatantId`, so re-sorting
+//       the list can never move the turn marker onto a different combatant.
 //
 // Existing behaviour is preserved: each old threshold becomes one trigger
 // pointed at the table it used to fire, and `oncePerTurn` maps to
@@ -88,6 +90,19 @@ export function migratePersisted(persisted: unknown): EncounterState {
     })
   }
   s.triggerResults = []
+
+  // v5: positional currentTurnIndex → currentCombatantId. Clamp the old index
+  // to the list so a stale save can't point past the end.
+  if (typeof s.currentCombatantId !== 'string') {
+    const list = Array.isArray(s.combatants) ? s.combatants : []
+    const idx = typeof s.currentTurnIndex === 'number' ? s.currentTurnIndex : 0
+    const clamped = list.length
+      ? Math.min(Math.max(0, idx), list.length - 1)
+      : -1
+    s.currentCombatantId =
+      clamped >= 0 ? ((list[clamped] as Record<string, unknown>).id as string) ?? null : null
+  }
+  delete s.currentTurnIndex
 
   // Prep library (scenes + statblocks) is new in v3 — seed example content for
   // encounters that predate it so users still see how it works.

@@ -71,8 +71,10 @@ These two lists are **not** subset-of each other:
 Add your new field to whichever apply. If you change the persisted *shape*,
 bump `version` in the `persist` options and extend `migratePersisted` in
 `src/data/migrate.ts` (kept light so it's unit-testable without loading the
-store). Current schema is **v3** (v0 thresholds → triggers; v1 `oncePerTurn` →
-`dedupe`; v3 seeds the `scenes`/`statblocks` library).
+store). Current schema is **v5** (v0 thresholds → triggers; v1 `oncePerTurn` →
+`dedupe`; v3 seeds the `scenes`/`statblocks` library; v4 temp HP/death
+saves/concentration/timed conditions; v5 `currentTurnIndex` →
+`currentCombatantId`).
 
 ## Domain model (`src/types.ts`)
 
@@ -153,10 +155,13 @@ design brief.
 
 ## Gotchas
 
-- **`currentTurnIndex` is positional, not an id.** Because `updateCombatant`
-  re-sorts by initiative, editing a combatant's initiative mid-encounter can
-  change which row is "on turn." Keep this in mind before adding features that
-  mutate initiative during combat.
+- **`currentCombatantId` is an id, not a position.** The turn marker is
+  immune to re-sorting: adding reinforcements or editing a combatant's
+  initiative mid-combat may reorder the list, but it can no longer slide the
+  marker onto a different combatant. `removeCombatant` hands the turn to the
+  next combatant in order when the active one is removed. null means combat
+  hasn't started; the first combatant added (or the top of a loaded
+  encounter's order) becomes current.
 - **Player view is read-only** but shares the same store instance via sync —
   never add write actions reachable from `PlayerView`.
 - **`alert`/`confirm`/`prompt`** are used for quick dialogs (e.g. table

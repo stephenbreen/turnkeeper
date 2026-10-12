@@ -214,7 +214,11 @@ export type Scene = {
 
 export type EncounterState = {
   combatants: Combatant[]
-  currentTurnIndex: number
+  // Whose turn it is, by id — NOT a positional index. `updateCombatant` and
+  // every add re-sort the list by initiative, so a positional index would let
+  // the marker silently slide onto a different combatant (adding a
+  // reinforcement, editing initiative, …). null = combat hasn't started.
+  currentCombatantId: string | null
   round: number
   timerSeconds: number
   timerRemaining: number
