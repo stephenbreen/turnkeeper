@@ -28,6 +28,14 @@ const ABILITY_FULL: Record<string, string> = {
 }
 const abilityName = (code: string) => ABILITY_FULL[code.toLowerCase().trim()] ?? code
 
+// 5etools attack-roll kinds ({@atkr mw,s} etc.): m/melee-weapon, r/ranged-
+// weapon, s/spell, plus the melee/ranged spell variants.
+const ATK_TYPE: Record<string, string> = {
+  m: 'Melee', mw: 'Melee',
+  r: 'Ranged', rw: 'Ranged',
+  s: 'Spell', ms: 'Melee Spell', rs: 'Ranged Spell',
+}
+
 function asString(v: unknown): string | undefined {
   if (v == null) return undefined
   if (typeof v === 'string') return v.trim() || undefined
@@ -45,7 +53,9 @@ function strip5eTags(input: string): string {
       const first = parts[0] ?? ''
       const display = parts.length > 2 ? parts[parts.length - 1] : first
       switch (tag) {
-        case 'hit': return `+${first}`
+        // 5etools hit lines already carry the sign ("{@hit +4}"), so only
+        // prepend one when it's missing.
+        case 'hit': return first.startsWith('+') || first.startsWith('-') ? first : `+${first}`
         case 'dc': return `DC ${first}`
         case 'h': return 'Hit: '
         case 'atk': return ''
@@ -53,7 +63,7 @@ function strip5eTags(input: string): string {
         case 'atkro': {
           const label = first
             .split(',')
-            .map((k) => (k.trim() === 'm' ? 'Melee' : k.trim() === 'r' ? 'Ranged' : k.trim()))
+            .map((k) => ATK_TYPE[k.trim()] ?? k.trim())
             .join(' or ')
           return `${label} Attack Roll: `
         }

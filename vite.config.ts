@@ -1,3 +1,4 @@
+/// <reference types="vitest" />
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
@@ -10,5 +11,13 @@ export default defineConfig(({ command }) => ({
   server: {
     port: 5173,
     strictPort: false,
+  },
+  // Vitest — tests are colocated as *.test.ts next to the module they cover.
+  // Default environment is node (the tested core is pure); the store test
+  // opts into jsdom with a @vitest-environment pragma (it needs localStorage
+  // for the persist middleware).
+  test: {
+    environment: 'node',
+    include: ['src/**/*.test.{ts,tsx}'],
   },
 }))

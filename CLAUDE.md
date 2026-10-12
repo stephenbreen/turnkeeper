@@ -27,9 +27,18 @@ npm run dev        # Vite dev server at localhost:5173 (base '/')
 npm run build      # tsc -b && vite build  — THE gate that must stay green
 npm run preview    # serve the production build
 npm run typecheck  # tsc -b --noEmit
+npm test           # vitest run — unit tests
+npm run test:watch # vitest in watch mode
 ```
 
 - **`npm run build` is the real check.** Run it after any change.
+- **Tests** are colocated (`src/**/*.test.ts`) and run under vitest. Default
+  environment is `node` — the tested core (dice, names, migrate, party,
+  encounter, statblock) is pure by design; keep it that way. Store-level tests
+  (`src/store.test.ts`) opt into `jsdom` with a `@vitest-environment` pragma
+  because the persist middleware needs `localStorage`. When you add a pure
+  helper, add a test next to it; prefer exercising the store through its
+  actions in `store.test.ts`.
 - `npm run typecheck` currently prints a non-fatal `TS6310` about
   `tsconfig.node.json` disabling emit. It is noise; `build` still succeeds.
   Don't "fix" it by chasing the warning unless build actually breaks.
