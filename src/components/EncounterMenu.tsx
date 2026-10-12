@@ -49,7 +49,7 @@ export default function EncounterMenu({
       tables,
       timerSeconds,
     }
-    download(JSON.stringify(payload, null, 2), `the-breaking-${today()}.json`)
+    download(JSON.stringify(payload, null, 2), `turnkeeper-${today()}.json`)
     setOpen(false)
   }
 
@@ -59,7 +59,7 @@ export default function EncounterMenu({
       alert('No players to export. Add PCs first (set type to "PC" when adding).')
       return
     }
-    download(serializeParty(members), `the-breaking-party-${today()}.json`)
+    download(serializeParty(members), `turnkeeper-party-${today()}.json`)
     setOpen(false)
   }
 

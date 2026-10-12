@@ -28,7 +28,7 @@ export default function HelpModal({
         onClick={(e) => e.stopPropagation()}
       >
         <header className="flex items-center gap-3 px-6 py-4 border-b border-slate-800">
-          <h2 className="text-xl font-bold">How to use The Breaking</h2>
+          <h2 className="text-xl font-bold">How to use Turnkeeper</h2>
           <div className="flex-1" />
           <button onClick={onClose} className="btn" aria-label="Close help">
             ✕
@@ -378,7 +378,7 @@ export default function HelpModal({
           </span>
           <div className="flex-1" />
           <a
-            href="https://github.com/stephenbreen/the-breaking"
+            href="https://github.com/stephenbreen/turnkeeper"
             target="_blank"
             rel="noreferrer"
             className="text-indigo-400 hover:text-indigo-300"

@@ -4,7 +4,7 @@ Guidance for working in this repository.
 
 ## What this is
 
-**The Breaking** is a browser-only initiative tracker for tabletop RPG dungeon
+**Turnkeeper** is a browser-only initiative tracker for tabletop RPG dungeon
 masters. No backend, no accounts, no SRD data. Two views run in two windows of
 the same browser:
 
@@ -34,7 +34,7 @@ npm run typecheck  # tsc -b --noEmit
   `tsconfig.node.json` disabling emit. It is noise; `build` still succeeds.
   Don't "fix" it by chasing the warning unless build actually breaks.
 - Deploy is automatic to GitHub Pages via `.github/workflows/deploy.yml`. The
-  production `base` is `/the-breaking/` (see `vite.config.ts`); dev base is `/`.
+  production `base` is `/turnkeeper/` (see `vite.config.ts`); dev base is `/`.
 
 ## Architecture
 
@@ -127,7 +127,7 @@ design brief.
 - `slate` numbers are semantic and *inverted*: **low = ink/text, high =
   surfaces** (so `bg-slate-950` is the page, `text-slate-100` is body ink) — and
   they stay that way in both themes.
-- Theme is a per-window pref in `localStorage['the-breaking-theme']`
+- Theme is a per-window pref in `localStorage['turnkeeper-theme']`
   (`src/theme.ts`), applied pre-paint in `main.tsx`, toggled by
   `ThemeToggle`, and synced to the player window via the `storage` event. It is
   **not** in the encounter store.
@@ -170,7 +170,7 @@ design brief.
   `ConditionsModal` in `CombatantCard.tsx`, `position: fixed` so overflow can't
   clip it — but keep the portal rule in mind for anchored menus.)
 - The right panel collapse (desktop) is App-local state persisted to
-  `localStorage['the-breaking-sidepanel']` — separate from the encounter store.
+  `localStorage['turnkeeper-sidepanel']` — separate from the encounter store.
 - No tests exist. Verify changes by running the app (`npm run dev`) and, for
   sync/persistence work, opening the player view (`?view=player`) in a second
   window.

@@ -207,7 +207,16 @@ function buildCombatant(c: Partial<Combatant>): Combatant {
   }
 }
 
-// Next-name logic for duplicateCombatant lives in utils/names.ts.
+// One-time handoff from the pre-rename storage key so an in-flight encounter
+// survives the rebrand. Idempotent: only copies when the new key is absent.
+try {
+  const legacy = localStorage.getItem('the-breaking-encounter')
+  if (legacy && !localStorage.getItem('turnkeeper-encounter')) {
+    localStorage.setItem('turnkeeper-encounter', legacy)
+  }
+} catch {
+  /* localStorage unavailable — start fresh */
+}
 
 export const useStore = create<Store>()(
   persist(
@@ -765,7 +774,7 @@ export const useStore = create<Store>()(
         set((s) => ({ statblocks: s.statblocks.filter((sb) => sb.id !== id) })),
     }),
     {
-      name: 'the-breaking-encounter',
+      name: 'turnkeeper-encounter',
       version: 4,
       storage: createJSONStorage(() => localStorage),
       // Persist only the durable fields. Keep this list and SYNC_KEYS (below)
@@ -790,7 +799,7 @@ function snapshot(s: EncounterState): Snapshot {
 }
 
 if (typeof window !== 'undefined' && typeof BroadcastChannel !== 'undefined') {
-  const channel = new BroadcastChannel('the-breaking-sync')
+  const channel = new BroadcastChannel('turnkeeper-sync')
   let receiving = false
   let lastSerialized = JSON.stringify(snapshot(useStore.getState()))
 

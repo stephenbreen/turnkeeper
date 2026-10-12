@@ -1,4 +1,4 @@
-# The Breaking
+# Turnkeeper
 
 A two-panel, browser-only initiative tracker for tabletop RPG dungeon masters.
 One laptop, two windows: the DM drives from the primary window and a read-only
@@ -123,8 +123,8 @@ via `BroadcastChannel` in the same browser.
 ## Getting started
 
 ```bash
-git clone git@github.com:stephenbreen/the-breaking.git
-cd the-breaking
+git clone git@github.com:stephenbreen/turnkeeper.git
+cd turnkeeper
 npm install
 npm run dev
 # open http://localhost:5173/
@@ -188,10 +188,12 @@ EncounterState = {
   combatants: Combatant[]
   currentTurnIndex, round
   timerSeconds, timerRemaining, timerRunning
-  thresholds: number[]               // e.g. [25, 50]
-  strategyLabelNames: string[]       // e.g. ['Surrounded']
+  triggers: Trigger[]               // rules: "when EVENT → roll a table"
+  strategyLabelNames: string[]      // e.g. ['Surrounded']
   tables: RollTable[]
-  lastTrigger: TriggerInfo | null    // drives the injury-toast UI
+  triggerResults: TriggerResult[]   // pending toasts (synced, not persisted)
+  scenes: Scene[]                   // prep library (DM-only, not synced)
+  statblocks: Statblock[]           // prep library (DM-only, not synced)
 }
 ```
 
@@ -199,14 +201,17 @@ All mutations go through named actions (`applyDamage`, `nextTurn`,
 `toggleCondition`, …) colocated with the state. Components subscribe with
 selectors (`useStore(s => s.combatants)`) so re-renders are surgical.
 
-`lastTrigger` is intentionally **not** broadcast to the player window — it is
-a DM-only UI signal that pops a toast when a massive-damage threshold fires.
+`triggerResults` — the pending toasts — is broadcast but **not** persisted,
+so the DM never reopens into a stale injury prompt. The player window
+receives it too, but `PlayerInjuryBanner` only renders injury-type reveals;
+DM-facing events (combatant added, plain notifications) are filtered out.
 
 ### 4. Persistence: Zustand's `persist` middleware
 
 Every state change is mirrored into `localStorage` under
-`the-breaking-encounter`. The `partialize` function strips `lastTrigger`
-before serialising, so the DM never reopens into a stale toast.
+`turnkeeper-encounter`. The `partialize` allow-list (`PERSIST_KEYS` in
+`store.ts`) deliberately keeps `triggerResults` out, so the DM never
+reopens into a stale toast.
 
 On startup, Zustand rehydrates synchronously from `localStorage`, so the UI
 renders the last known state before anything else touches the network.
@@ -214,7 +219,7 @@ renders the last known state before anything else touches the network.
 ### 5. Cross-window sync: `BroadcastChannel`
 
 A module-level block at the bottom of `src/store.ts` wires up a channel
-called `the-breaking-sync` and subscribes to the store.
+called `turnkeeper-sync` and subscribes to the store.
 
 **Broadcast path (DM → player):**
 
@@ -244,22 +249,25 @@ The hourglass animates smoothly between integer-second ticks via CSS
 transitions on the SVG `<rect>` `y` and `height` attributes (1 s linear), so
 the sand drain looks continuous despite the state updating once per second.
 
-### 6. Massive-damage trigger flow
+### 6. Trigger flow
 
 When the DM clicks `Damage` with an amount `d` on a combatant with `maxHP m`:
 
 1. `applyDamage(id, d)` computes `pct = d / m * 100`.
-2. It scans `state.thresholds` highest-first; the first threshold `t` where
-   `pct ≥ t` **and** `t` has not already fired for this combatant is the
-   winner.
-3. The combatant's HP is reduced and `t` is appended to
-   `firedThresholds` so the same threshold cannot re-fire later in the
-   encounter.
-4. `state.lastTrigger` is set, which renders `<InjuryToast />`.
-5. The toast finds the table whose `builtIn` matches `injury25` or
-   `injury50` (falling back to a name-based match) and offers a `Roll` button
-   that evaluates the table's dice expression and looks up the matching range.
-6. `Encounter ▾ → Reset injury triggers` clears the `firedThresholds` array
+2. It gathers every enabled, in-scope massive-damage trigger whose threshold
+   `t` satisfies `pct ≥ t` and whose dedupe window allows it, then fires
+   **only the highest** — a 60% hit fires the 50% trigger, not the 25% one.
+3. The combatant's HP is reduced and the trigger's id is recorded in
+   `firedTriggers` / `firedTriggersRound` (per its `always` / `perTurn` /
+   `perRound` cadence) so it cannot re-fire inside that window. Windows
+   reset automatically on turn / round change.
+4. A `TriggerResult` is queued, which renders `<InjuryToast />` on the DM
+   panel; `hpReachedZero` and concentration events queue the same way.
+5. The toast's `Roll` button evaluates the trigger's table dice expression
+   (`rollExpression`) and looks up the matching range entry — twice for a
+   50% grievous wound, showing every individual roll. Rolled results also
+   flash on the player view.
+6. `Encounter ▾ → Reset injury triggers` clears both fired-trigger arrays
    for every combatant — useful after a long rest.
 
 ### 7. File layout
@@ -270,25 +278,37 @@ src/
 ├── App.tsx               DM shell (header + split panel)
 ├── PlayerView.tsx        Read-only player popout
 ├── store.ts              Zustand store + persist + BroadcastChannel sync
-├── types.ts              Combatant, RollTable, EncounterState, TriggerInfo
+├── theme.ts              Light/dark theme per window (localStorage + storage event)
+├── types.ts              Combatant, Trigger, RollTable, Statblock, EncounterState
 ├── data/
 │   ├── conditions.ts     Standard 5e conditions list
-│   └── defaultState.ts   Starter tables + empty encounter
+│   ├── defaultState.ts   Starter tables + triggers + empty encounter
+│   ├── encounter.ts      Roster → combatant expansion + initiative modes
+│   ├── migrate.ts        Bring old persisted saves up to the current schema
+│   ├── party.ts          Reusable PC roster import/export
+│   ├── playerClasses.ts  PC class icons
+│   └── presets.ts        Example scene + statblocks seeded on first run
 ├── utils/
 │   ├── dice.ts           rollExpression + matchTableEntry
 │   ├── hpStatus.ts       HP → word status + colour class
-│   └── id.ts             Opaque ids for combatants / entries / tables
+│   ├── id.ts             Opaque ids for combatants / entries / tables
+│   ├── names.ts          Duplicate / bulk-add name collision helpers
+│   └── statblock.ts      Javalent YAML + 5etools JSON → normalised statblock
 └── components/
     ├── Timer.tsx                  DM-side countdown with pause / reset
     ├── Hourglass.tsx              SVG hourglass used on player view
     ├── InitiativeList.tsx         Renders the ordered list of cards
     ├── CombatantCard.tsx          Expandable card: damage, heal, conditions, …
-    ├── AddCombatantModal.tsx      Dialog for adding a PC / monster
+    ├── AddCombatantModal.tsx      Add a PC / monster (with bulk quantity)
     ├── DiceRoller.tsx             Preset buttons + freeform expression
     ├── TablesPanel.tsx            List + editor for roll tables
-    ├── InjuryToast.tsx            Toast shown when a threshold fires
-    ├── EncounterMenu.tsx          New / Reset triggers / Import / Export
-    └── SettingsPanel.tsx          Thresholds + strategy label management
+    ├── SettingsPanel.tsx          Triggers + strategy label management
+    ├── LibraryModal.tsx           Scenes, encounters, rosters & statblocks
+    ├── StatblockView.tsx          Classic 5e-styled statblock renderer
+    ├── InjuryToast.tsx            DM toast when a trigger fires
+    ├── PlayerInjuryBanner.tsx     Player-side injury reveal
+    ├── EncounterMenu.tsx          New / Reset triggers / Import / Export / party
+    └── HelpModal.tsx              Keyboard shortcuts + walkthrough
 ```
 
 ### 8. Explicit non-goals (for v1)
@@ -297,10 +317,8 @@ src/
   same-browser only. Two devices would need a tiny Node/WebSocket server.
 - **Per-player views.** The popout is a single shared player screen, not one
   view per player.
-- **SRD / monster library.** Intentional — the DM types in the combatants
-  they care about.
-- **Condition duration tracking.** Conditions are simple on/off toggles; the
-  DM remembers duration.
+- **Built-in monster library.** Intentional — import your own statblocks
+  (Javalent YAML or 5etools JSON) or type in the combatants you care about.
 - **Undo.** Save / export encounter JSON instead.
 
 ---

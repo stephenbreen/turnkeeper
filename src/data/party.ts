@@ -16,12 +16,15 @@ export type PartyMember = {
 }
 
 export type PartyFile = {
-  type: 'the-breaking-party'
+  type: 'turnkeeper-party'
   version: 1
   party: PartyMember[]
 }
 
-const PARTY_FILE_TYPE = 'the-breaking-party'
+// Old exports from before the rename said 'the-breaking-party'; parseParty
+// ignores the tag entirely (it finds the `party` array by shape), so those
+// files still import cleanly.
+const PARTY_FILE_TYPE = 'turnkeeper-party'
 
 // Pull the exportable sheet fields out of the live PCs.
 export function toParty(combatants: Combatant[]): PartyMember[] {

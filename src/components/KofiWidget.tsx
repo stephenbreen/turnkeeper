@@ -12,7 +12,7 @@ export default function KofiWidget() {
       target="_blank"
       rel="noopener noreferrer"
       className="btn-primary inline-flex items-center gap-1.5"
-      title="Support The Breaking on Ko-fi"
+      title="Support Turnkeeper on Ko-fi"
     >
       <span aria-hidden>☕</span> Buy me a coffee
     </a>

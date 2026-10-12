@@ -1,6 +1,6 @@
-# The Breaking — Design System
+# Turnkeeper — Design System
 
-A design brief and token reference for **The Breaking**, a two-window initiative
+A design brief and token reference for **Turnkeeper**, a two-window initiative
 tracker for tabletop RPG dungeon masters. This document is the source of truth
 for the visual language; keep it in step with `src/index.css`,
 `tailwind.config.js`, and the components. It is intended to be usable by design
@@ -43,7 +43,7 @@ changes**. Variables are space-separated RGB triples so Tailwind's
 - Scale → variable wiring: `tailwind.config.js`.
 - Runtime: `src/theme.ts` (`applyTheme`, `useTheme`), applied pre-paint in
   `src/main.tsx`; toggle in `src/components/ThemeToggle.tsx`. The choice is a
-  per-window preference in `localStorage['the-breaking-theme']` and syncs to the
+  per-window preference in `localStorage['turnkeeper-theme']` and syncs to the
   player popout via the `storage` event.
 
 ### Semantic roles (the golden rule)

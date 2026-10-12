@@ -32,7 +32,7 @@ export default function App() {
   // Desktop-only: collapse the right panel to give initiative full width.
   const [rightOpen, setRightOpen] = useState<boolean>(() => {
     try {
-      return localStorage.getItem('the-breaking-sidepanel') !== 'closed'
+      return localStorage.getItem('turnkeeper-sidepanel') !== 'closed'
     } catch {
       return true
     }
@@ -40,7 +40,7 @@ export default function App() {
 
   useEffect(() => {
     try {
-      localStorage.setItem('the-breaking-sidepanel', rightOpen ? 'open' : 'closed')
+      localStorage.setItem('turnkeeper-sidepanel', rightOpen ? 'open' : 'closed')
     } catch {
       /* ignore */
     }
@@ -135,7 +135,7 @@ export default function App() {
     const url = window.location.pathname + '?view=player'
     const win = window.open(
       url,
-      'the-breaking-player',
+      'turnkeeper-player',
       'width=1100,height=780,menubar=no,toolbar=no'
     )
     if (!win) {
@@ -160,7 +160,7 @@ export default function App() {
     <div className="h-[100dvh] flex flex-col bg-slate-950 text-slate-100">
       <header className="flex items-center gap-2 px-2 sm:px-4 py-2 border-b border-slate-800 bg-slate-900 flex-wrap">
         <h1 className="text-lg sm:text-xl font-bold tracking-tight">
-          ⚔ The Breaking
+          ⚔ Turnkeeper
         </h1>
         <span className="hidden sm:inline text-[10px] uppercase tracking-widest text-slate-500 px-1.5 py-0.5 border border-slate-700 rounded">
           DM
@@ -331,7 +331,7 @@ export default function App() {
           the bottom-most element. */}
       <footer className="flex items-center justify-center gap-3 border-t border-slate-800 bg-slate-900 px-4 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] text-xs text-slate-500">
         <span className="hidden sm:inline">
-          The Breaking — browser initiative tracker for DMs
+          Turnkeeper — initiative tracker for DMs
         </span>
         <span className="hidden sm:inline text-slate-700" aria-hidden>
           ·

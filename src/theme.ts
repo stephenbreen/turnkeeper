@@ -2,11 +2,20 @@ import { useCallback, useEffect, useState } from 'react'
 
 export type Theme = 'light' | 'dark'
 
-const KEY = 'the-breaking-theme'
+const KEY = 'turnkeeper-theme'
+// Pre-rename key ("The Breaking"); read once as a fallback handoff.
+const LEGACY_KEY = 'the-breaking-theme'
 
 export function getStoredTheme(): Theme {
   try {
-    const v = localStorage.getItem(KEY)
+    let v = localStorage.getItem(KEY)
+    if (v == null) {
+      const legacy = localStorage.getItem(LEGACY_KEY)
+      if (legacy === 'dark' || legacy === 'light') {
+        v = legacy
+        localStorage.setItem(KEY, v)
+      }
+    }
     if (v === 'dark' || v === 'light') return v
   } catch {
     /* ignore */
