@@ -13,19 +13,39 @@ function headline(r: TriggerResult): { title: string; detail: string } {
             ? `${name} took ${r.damage} damage (${Math.round(r.pct ?? 0)}% of max HP).`
             : `${name} took massive damage.`,
       }
+    case 'hpBelow':
+      return {
+        title: `HP below ${r.percentThreshold}%`,
+        detail: `${name} is at ${Math.round(r.pct ?? 0)}% of max HP.`,
+      }
     case 'hpReachedZero':
       return { title: 'Down!', detail: `${name} dropped to 0 HP.` }
     case 'combatantAdded':
       return { title: r.triggerName, detail: `${name} joined the encounter.` }
+    case 'roundStart':
+      return { title: r.triggerName, detail: r.notifyText ?? 'A new round begins.' }
+    case 'turnStart':
+      return { title: r.triggerName, detail: `${name}'s turn begins.` }
+    case 'conditionGained':
+      return {
+        title: r.triggerName,
+        detail: r.notifyText ? `${name}: ${r.notifyText}` : `${name} gained a condition.`,
+      }
+    case 'lair':
+      return { title: `🐉 ${r.triggerName}`, detail: r.notifyText ?? 'The lair acts now.' }
     case 'concentration':
       return { title: '🧠 Concentration', detail: '' }
   }
 }
 
-export default function InjuryToast() {
-  const results = useStore((s) => s.triggerResults)
+export default function ResultToast() {
   const roll = useStore((s) => s.rollTriggerResult)
   const dismiss = useStore((s) => s.dismissTriggerResult)
+  // `players`-only triggers skip the DM toast entirely — they're reveals
+  // meant purely for the player window.
+  const results = useStore((s) => s.triggerResults).filter(
+    (r) => r.visibility !== 'players'
+  )
 
   if (results.length === 0) return null
 

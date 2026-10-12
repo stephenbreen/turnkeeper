@@ -45,6 +45,10 @@ export type Combatant = {
   notes: string
   nameVisibleToPlayers: boolean
   isDead: boolean
+  // Legendary actions available per round (0 = none). Uses reset at the
+  // start of this combatant's own turn.
+  legendaryActions: number
+  legendaryUsed: number
   // Trigger ids already fired for this combatant in the current turn (for
   // `dedupe: 'perTurn'`). Cleared on every turn change.
   firedTriggers: string[]
@@ -75,11 +79,18 @@ export type RollTable = {
 
 export type TriggerScope = 'any' | 'pc' | 'monster'
 
-export type TriggerEventKind = 'massiveDamage' | 'hpReachedZero' | 'combatantAdded'
+export type TriggerEventKind =
+  | 'massiveDamage'
+  | 'hpReachedZero'
+  | 'combatantAdded'
+  | 'hpBelow'
+  | 'roundStart'
+  | 'turnStart'
+  | 'conditionGained'
 
-// Result kinds include synthetic notices (concentration) that aren't creatable
-// triggers but still surface in the DM toast.
-export type ResultKind = TriggerEventKind | 'concentration'
+// Result kinds include synthetic notices (concentration, lair action) that
+// aren't creatable triggers but still surface in the DM toast / player banner.
+export type ResultKind = TriggerEventKind | 'concentration' | 'lair'
 
 export type TriggerEvent =
   // A single hit dealing >= percentOfMax % of the target's max HP.
@@ -88,6 +99,21 @@ export type TriggerEvent =
   | { kind: 'hpReachedZero' }
   // A new combatant was added to the encounter.
   | { kind: 'combatantAdded' }
+  // Current HP crosses from above percentOfMax % to that threshold or below
+  // (bloodied, phase changes). Crossing-based: healing back above the
+  // threshold re-arms it.
+  | { kind: 'hpBelow'; percentOfMax: number }
+  // The given round begins — 0 means "every round". Reinforcements,
+  // escalating plots.
+  | { kind: 'roundStart'; round: number }
+  // A scoped combatant's turn begins — start-of-turn reminders and effects.
+  | { kind: 'turnStart' }
+  // The named condition is applied to a scoped combatant.
+  | { kind: 'conditionGained'; conditionId: string }
+
+// Who sees a fired trigger's result: the DM toast, the player window's
+// banner, or both.
+export type ResultVisibility = 'dm' | 'players' | 'both'
 
 export type TriggerAction =
   // Roll on a table `rolls` times (e.g. 50% massive damage = roll the injury
@@ -95,6 +121,13 @@ export type TriggerAction =
   | { kind: 'rollTable'; tableId: string | null; rolls: number }
   // Just surface a reminder to the DM.
   | { kind: 'notify'; text: string }
+  // Auto-apply a condition (with optional round timer / save-ends) to the
+  // combatant that triggered it.
+  | { kind: 'applyCondition'; conditionId: string; rounds: number | null; saveEnds: boolean }
+  // Engine-adjusted HP. Trigger-caused changes never re-fire triggers, so a
+  // bleeding trigger can't cascade into more rolls.
+  | { kind: 'damage'; amount: number }
+  | { kind: 'heal'; amount: number }
 
 // How often a trigger may fire for the same combatant:
 //   always   — every qualifying hit/event
@@ -111,6 +144,9 @@ export type Trigger = {
   dedupe: TriggerDedupe
   event: TriggerEvent
   action: TriggerAction
+  // Where the result surfaces. Note: `players`-only triggers skip the DM
+  // toast entirely — a reveal meant purely for the big screen.
+  visibility: ResultVisibility
 }
 
 export type TriggerRoll = { roll: number; text: string | null }
@@ -121,6 +157,7 @@ export type TriggerResult = {
   triggerId: string
   triggerName: string
   eventKind: ResultKind
+  visibility: ResultVisibility
   combatantId: string | null
   combatantName: string
   // massiveDamage context
@@ -133,7 +170,7 @@ export type TriggerResult = {
   dice: string | null
   rollsRequested: number
   rolls: TriggerRoll[]
-  // notify action
+  // notify / applyCondition / damage / heal actions, rendered as text
   notifyText?: string
 }
 
@@ -173,7 +210,41 @@ export type Statblock = {
   source?: string
 }
 
-// ---------- Prep library: Scene → Encounter → roster ----------
+// ---------- Event log ----------
+// Append-only, DM-only history of the fight, capped to the last LOG_CAP
+// entries. Exported as JSON (a replay viewer may come later); deliberately
+// NOT synced to the player window.
+
+export type LogEntryKind =
+  | 'roundStart'
+  | 'turnStart'
+  | 'damage'
+  | 'heal'
+  | 'deathSave'
+  | 'died'
+  | 'conditionAdd'
+  | 'conditionRemove'
+  | 'combatantAdd'
+  | 'combatantRemove'
+  | 'triggerFired'
+  | 'lairAction'
+  | 'legendaryUse'
+  | 'encounterLoad'
+  | 'encounterReset'
+
+export type LogEntry = {
+  id: string
+  // Date.now() at the moment of the entry.
+  t: number
+  kind: LogEntryKind
+  // Primary subject — combatant name, trigger name, encounter name…
+  name: string
+  value?: number
+  // Extra context (condition id, save kind, action summary…).
+  text?: string
+}
+
+// ---------- Campaign manager: Campaign → Session → Encounter → roster ----------
 
 export type InitiativeMode =
   | 'roll-each' // each expanded combatant rolls its own 1d20 + mod
@@ -196,6 +267,8 @@ export type RosterEntry = {
   nameVisibleToPlayers: boolean
   statblockId?: string
   playerClass?: PlayerClassId
+  // Legendary actions per round for expanded combatants (0 = none).
+  legendaryActions?: number
 }
 
 export type EncounterTemplate = {
@@ -205,11 +278,39 @@ export type EncounterTemplate = {
   roster: RosterEntry[]
 }
 
-export type Scene = {
+// Mid-fight state saved into a session so a game can be resumed exactly where
+// it left off. Rules (triggers / tables / labels) stay live rather than being
+// snapshotted — tweaking them between sessions applies on resume.
+export type SessionSnapshot = {
+  combatants: Combatant[]
+  currentCombatantId: string | null
+  round: number
+  timerSeconds: number
+  // DM-only fight history, restored so the log survives the pause.
+  eventLog: LogEntry[]
+  lairFiredRound: number | null
+  savedAt: number
+}
+
+export type Session = {
   id: string
   name: string
   notes?: string
   encounters: EncounterTemplate[]
+  snapshot?: SessionSnapshot
+}
+
+export type Campaign = {
+  id: string
+  name: string
+  notes?: string
+  sessions: Session[]
+}
+
+export type LairActionConfig = {
+  // Initiative count the lair acts at (5e convention: 20).
+  initiative: number
+  name: string
 }
 
 export type EncounterState = {
@@ -227,6 +328,14 @@ export type EncounterState = {
   strategyLabelNames: string[]
   tables: RollTable[]
   triggerResults: TriggerResult[]
-  scenes: Scene[]
+  // DM-only planning tree — never synced to the player window.
+  campaigns: Campaign[]
   statblocks: Statblock[]
+  // Lair action setting; null = off. When set, a marker row appears in the
+  // initiative order at this count and a reminder fires when it's passed.
+  lairAction: LairActionConfig | null
+  // Round number the lair reminder last fired in (once-per-round guard).
+  lairFiredRound: number | null
+  // DM-only fight history — never synced to the player window.
+  eventLog: LogEntry[]
 }

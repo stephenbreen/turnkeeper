@@ -1,9 +1,9 @@
 import { newId } from '../utils/id'
 import { normalizeStatblock } from '../utils/statblock'
-import type { RosterEntry, Scene, Statblock } from '../types'
+import type { Campaign, RosterEntry, Session, Statblock } from '../types'
 
-// Bundled example content so a new user can see the Scene → Encounter → roster
-// flow (and import/export) without building anything first.
+// Bundled example content so a new user can see the Campaign → Session →
+// Encounter → roster flow (and import/export) without building anything first.
 
 const entry = (p: Partial<RosterEntry> & { name: string }): RosterEntry => ({
   id: newId(),
@@ -19,7 +19,7 @@ const entry = (p: Partial<RosterEntry> & { name: string }): RosterEntry => ({
   ...p,
 })
 
-export function buildPresetLibrary(): { scenes: Scene[]; statblocks: Statblock[] } {
+export function buildPresetLibrary(): { campaigns: Campaign[]; statblocks: Statblock[] } {
   const goblin = normalizeStatblock({
     name: 'Goblin',
     size: 'Small',
@@ -86,10 +86,10 @@ export function buildPresetLibrary(): { scenes: Scene[]; statblocks: Statblock[]
     source: 'Example',
   })
 
-  const scene: Scene = {
+  const session: Session = {
     id: newId(),
     name: 'Wishing Well',
-    notes: 'Example scene — a roadside shrine. Two encounters the party may hit here.',
+    notes: 'Example session — a roadside shrine. Two encounters the party may hit here.',
     encounters: [
       {
         id: newId(),
@@ -128,5 +128,12 @@ export function buildPresetLibrary(): { scenes: Scene[]; statblocks: Statblock[]
     ],
   }
 
-  return { scenes: [scene], statblocks: [goblin, griffin] }
+  const campaign: Campaign = {
+    id: newId(),
+    name: 'Example Campaign',
+    notes: 'Your campaign holds the sessions you plan to run — prep encounters ahead of time, or save a fight mid-flight and resume it next week.',
+    sessions: [session],
+  }
+
+  return { campaigns: [campaign], statblocks: [goblin, griffin] }
 }

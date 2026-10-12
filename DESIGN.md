@@ -118,11 +118,13 @@ surface should use `slate-100/200/400`.
 ## 4. Iconography & motion
 
 - **Icons:** per-class adventurer glyphs + monster glyph (`CombatantIcon`);
-  sparing emoji for chrome (⚔ brand, 📚 library, 📜 statblock, ⚠️ injury,
-  ☾/☀ theme).
-- **Motion:** purposeful and rare. Injury banner `injury-enter` + `injury-shake`
-  (keyframes in `index.css`); the draining `Hourglass`; `scale-[1.01]` on the
-  active player row. Avoid decorative animation elsewhere.
+  sparing emoji for chrome (⚔ brand, 📚 library, 📜 statblock, ⚠️ trigger
+  toast, 🐉 lair action, ⚡ legendary, ☾/☀ theme).
+- **Motion:** purposeful and rare. Announcement banner `injury-enter` +
+  `injury-shake` (keyframes in `index.css`; historical names — the banner now
+  carries lair actions and player-facing notes too); the draining
+  `Hourglass`; `scale-[1.01]` on the active player row. Avoid decorative
+  animation elsewhere.
 - **Reduced motion:** `index.css` neutralizes all animation/transition under
   `prefers-reduced-motion: reduce` — every animated state has a static
   equivalent (red timer box, red banner, big number). Any new motion must

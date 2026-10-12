@@ -21,6 +21,7 @@ export default function AddCombatantModal({
   const [pp, setPP] = useState<string>('10')
   const [init, setInit] = useState<string>('10')
   const [qty, setQty] = useState<string>('1')
+  const [legendary, setLegendary] = useState<string>('0')
   const [statblockId, setStatblockId] = useState<string>('')
 
   useEffect(() => {
@@ -31,6 +32,7 @@ export default function AddCombatantModal({
       setPP('10')
       setInit('10')
       setQty('1')
+      setLegendary('0')
       setStatblockId('')
     }
   }, [open])
@@ -61,6 +63,8 @@ export default function AddCombatantModal({
       AC: parseInt(AC, 10) || 10,
       passivePerception: parseInt(pp, 10) || 10,
       initiative: parseInt(init, 10) || 10,
+      legendaryActions:
+        type === 'monster' ? Math.max(0, Math.min(3, parseInt(legendary, 10) || 0)) : 0,
       nameVisibleToPlayers: type === 'pc',
       statblockId: statblockId || undefined,
     }
@@ -204,6 +208,22 @@ export default function AddCombatantModal({
               className="input w-full"
             />
           </label>
+          {type === 'monster' && (
+            <label
+              className="block"
+              title="Legendary actions per round (0 = none). A reminder window appears after other turns while uses remain; uses return at the start of its own turn."
+            >
+              <span className="text-xs text-slate-400">Legendary / round</span>
+              <input
+                type="number"
+                min={0}
+                max={3}
+                value={legendary}
+                onChange={(e) => setLegendary(e.target.value)}
+                className="input w-full"
+              />
+            </label>
+          )}
         </div>
         <div className="flex justify-end gap-2 pt-2">
           <button type="button" onClick={onClose} className="btn">

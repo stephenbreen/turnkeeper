@@ -4,11 +4,12 @@ import { newId } from '../utils/id'
 import { blankRosterEntry } from '../data/encounter'
 import { parseStatblocks, statblockAC, statblockHP, statblockInitMod } from '../utils/statblock'
 import type {
+  Campaign,
   CombatantType,
   EncounterTemplate,
   InitiativeMode,
   RosterEntry,
-  Scene,
+  Session,
   Statblock,
 } from '../types'
 import StatblockView from './StatblockView'
@@ -20,9 +21,9 @@ const INIT_MODES: { value: InitiativeMode; label: string }[] = [
   { value: 'manual', label: 'Manual (enter live)' },
 ]
 
-const referencedStatblocks = (scene: Scene, all: Statblock[]): Statblock[] => {
+const referencedStatblocks = (session: Session, all: Statblock[]): Statblock[] => {
   const ids = new Set<string>()
-  scene.encounters.forEach((e) =>
+  session.encounters.forEach((e) =>
     e.roster.forEach((r) => r.statblockId && ids.add(r.statblockId))
   )
   return all.filter((sb) => ids.has(sb.id))
@@ -37,7 +38,7 @@ export default function LibraryModal({
   onClose: () => void
   onLoaded: () => void
 }) {
-  const [tab, setTab] = useState<'scenes' | 'statblocks'>('scenes')
+  const [tab, setTab] = useState<'sessions' | 'statblocks'>('sessions')
 
   useEffect(() => {
     if (!open) return
@@ -62,7 +63,7 @@ export default function LibraryModal({
         <header className="flex items-center gap-3 px-4 sm:px-6 py-3 border-b border-slate-800">
           <h2 className="text-lg font-bold">Library</h2>
           <div className="flex rounded overflow-hidden border border-slate-700 text-sm">
-            {(['scenes', 'statblocks'] as const).map((t) => (
+            {(['sessions', 'statblocks'] as const).map((t) => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
@@ -81,8 +82,8 @@ export default function LibraryModal({
         </header>
 
         <div className="flex-1 min-h-0 overflow-hidden">
-          {tab === 'scenes' ? (
-            <ScenesTab onLoaded={onLoaded} />
+          {tab === 'sessions' ? (
+            <SessionsTab onLoaded={onLoaded} />
           ) : (
             <StatblocksTab />
           )}
@@ -92,31 +93,47 @@ export default function LibraryModal({
   )
 }
 
-// ---------------- Scenes ----------------
+// ---------------- Campaign manager ----------------
 
-function ScenesTab({ onLoaded }: { onLoaded: () => void }) {
-  const scenes = useStore((s) => s.scenes)
-  const addScene = useStore((s) => s.addScene)
-  const importScene = useStore((s) => s.importScene)
+function SessionsTab({ onLoaded }: { onLoaded: () => void }) {
+  const campaigns = useStore((s) => s.campaigns)
+  const addCampaign = useStore((s) => s.addCampaign)
+  const addSession = useStore((s) => s.addSession)
+  const importSession = useStore((s) => s.importSession)
   const statblocks = useStore((s) => s.statblocks)
-  const [selectedId, setSelectedId] = useState<string | null>(scenes[0]?.id ?? null)
+  const [campaignId, setCampaignId] = useState<string | null>(campaigns[0]?.id ?? null)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    if ((!selectedId || !scenes.find((s) => s.id === selectedId)) && scenes[0]) {
-      setSelectedId(scenes[0].id)
+    if (!campaigns.find((c) => c.id === campaignId)) {
+      setCampaignId(campaigns[0]?.id ?? null)
+      setSelectedId(null)
     }
-  }, [scenes, selectedId])
+  }, [campaigns, campaignId])
 
-  const selected = scenes.find((s) => s.id === selectedId)
+  const campaign = campaigns.find((c) => c.id === campaignId) ?? null
+  const selected = campaign?.sessions.find((s) => s.id === selectedId) ?? null
 
   const onImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     e.target.value = ''
     if (!file) return
     try {
-      const data = JSON.parse(await file.text())
-      importScene(data)
+      const data = JSON.parse(await file.text()) as Record<string, unknown>
+      // Typed files we don't recognise are rejected up front; unmarked files
+      // are treated as legacy session / scene exports.
+      if (typeof data.type === 'string' && data.type !== 'turnkeeper-session') {
+        alert(`That file is a "${data.type}" — not a Turnkeeper session export.`)
+        return
+      }
+      const before = campaigns.flatMap((c) => c.sessions).length
+      importSession(data)
+      // importSession silently ignores malformed payloads; surface that.
+      const after = useStore.getState().campaigns.flatMap((c) => c.sessions).length
+      if (after === before) {
+        alert('No session found in that file — expected { session, statblocks }.')
+      }
     } catch (err) {
       alert('Import failed: ' + (err as Error).message)
     }
@@ -125,11 +142,32 @@ function ScenesTab({ onLoaded }: { onLoaded: () => void }) {
   return (
     <div className="flex h-full min-h-0">
       <div className="w-44 sm:w-52 border-r border-slate-800 flex flex-col shrink-0">
+        {campaigns.length > 1 && (
+          <div className="p-2 border-b border-slate-800">
+            <select
+              value={campaignId ?? ''}
+              onChange={(e) => {
+                setCampaignId(e.target.value || null)
+                setSelectedId(null)
+              }}
+              className="input w-full text-xs"
+              title="Active campaign"
+            >
+              {campaigns.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         <div className="flex-1 overflow-y-auto">
-          {scenes.length === 0 && (
-            <div className="p-3 text-xs text-slate-500 italic">No scenes yet.</div>
+          {!campaign && (
+            <div className="p-3 text-xs text-slate-500 italic">
+              No campaigns yet — create one below.
+            </div>
           )}
-          {scenes.map((s) => (
+          {campaign?.sessions.map((s) => (
             <button
               key={s.id}
               onClick={() => setSelectedId(s.id)}
@@ -147,13 +185,21 @@ function ScenesTab({ onLoaded }: { onLoaded: () => void }) {
         </div>
         <div className="p-2 space-y-1 border-t border-slate-800">
           <button
-            onClick={() => setSelectedId(addScene())}
+            onClick={() => campaignId && setSelectedId(addSession(campaignId))}
             className="btn w-full text-xs"
+            disabled={!campaignId}
           >
-            + New Scene
+            + New Session
           </button>
           <button onClick={() => fileRef.current?.click()} className="btn w-full text-xs">
-            Import Scene
+            Import Session
+          </button>
+          <button
+            onClick={() => setCampaignId(addCampaign())}
+            className="btn w-full text-xs"
+            title="Start another campaign"
+          >
+            + New Campaign
           </button>
           <input
             ref={fileRef}
@@ -167,10 +213,18 @@ function ScenesTab({ onLoaded }: { onLoaded: () => void }) {
 
       <div className="flex-1 overflow-y-auto min-w-0">
         {selected ? (
-          <SceneEditor scene={selected} statblocks={statblocks} onLoaded={onLoaded} />
+          <SessionEditor
+            session={selected}
+            campaign={campaign!}
+            statblocks={statblocks}
+            onLoaded={onLoaded}
+            onBack={() => setSelectedId(null)}
+          />
+        ) : campaign ? (
+          <CampaignEditor campaign={campaign} onPickSession={setSelectedId} />
         ) : (
           <div className="p-6 text-sm text-slate-500">
-            Create or import a scene to get started.
+            Create a campaign to get started.
           </div>
         )}
       </div>
@@ -178,55 +232,32 @@ function ScenesTab({ onLoaded }: { onLoaded: () => void }) {
   )
 }
 
-function SceneEditor({
-  scene,
-  statblocks,
-  onLoaded,
+function CampaignEditor({
+  campaign,
+  onPickSession,
 }: {
-  scene: Scene
-  statblocks: Statblock[]
-  onLoaded: () => void
+  campaign: Campaign
+  onPickSession: (id: string) => void
 }) {
-  const updateScene = useStore((s) => s.updateScene)
-  const removeScene = useStore((s) => s.removeScene)
-  const saveCurrent = useStore((s) => s.saveCurrentAsEncounter)
-  const combatants = useStore((s) => s.combatants)
-
-  const setEncounters = (encounters: EncounterTemplate[]) =>
-    updateScene(scene.id, { encounters })
-
-  const addEncounter = () =>
-    setEncounters([
-      ...scene.encounters,
-      { id: newId(), name: 'New Encounter', roster: [] },
-    ])
-
-  const updateEncounter = (id: string, patch: Partial<EncounterTemplate>) =>
-    setEncounters(scene.encounters.map((e) => (e.id === id ? { ...e, ...patch } : e)))
-
-  const removeEncounter = (id: string) =>
-    setEncounters(scene.encounters.filter((e) => e.id !== id))
-
-  const exportScene = () => {
-    const payload = { scene, statblocks: referencedStatblocks(scene, statblocks) }
-    downloadJson(payload, `scene-${slug(scene.name)}.json`)
-  }
+  const updateCampaign = useStore((s) => s.updateCampaign)
+  const removeCampaign = useStore((s) => s.removeCampaign)
 
   return (
     <div className="p-4 space-y-4">
       <div className="flex items-center gap-2">
         <input
-          value={scene.name}
-          onChange={(e) => updateScene(scene.id, { name: e.target.value })}
+          value={campaign.name}
+          onChange={(e) => updateCampaign(campaign.id, { name: e.target.value })}
           className="input flex-1 font-semibold text-base"
         />
-        <button onClick={exportScene} className="btn text-xs">
-          Export
-        </button>
         <button
           onClick={() => {
-            if (confirm(`Delete scene "${scene.name}" and its encounters?`))
-              removeScene(scene.id)
+            if (
+              confirm(
+                `Delete campaign "${campaign.name}" and its ${campaign.sessions.length} session(s)?`
+              )
+            )
+              removeCampaign(campaign.id)
           }}
           className="btn-danger text-xs"
         >
@@ -234,22 +265,191 @@ function SceneEditor({
         </button>
       </div>
       <textarea
-        value={scene.notes ?? ''}
-        onChange={(e) => updateScene(scene.id, { notes: e.target.value })}
-        placeholder="Scene notes…"
+        value={campaign.notes ?? ''}
+        onChange={(e) => updateCampaign(campaign.id, { notes: e.target.value })}
+        placeholder="Campaign notes — overview, arcs, NPCs, where the party is headed…"
+        className="input w-full text-sm"
+        rows={4}
+      />
+
+      <div>
+        <h3 className="font-semibold mb-2">Sessions</h3>
+        {campaign.sessions.length === 0 ? (
+          <div className="text-xs text-slate-500 italic">
+            No sessions yet — add one from the sidebar to plan a game night.
+          </div>
+        ) : (
+          <div className="space-y-1">
+            {campaign.sessions.map((s) => (
+              <button
+                key={s.id}
+                onClick={() => onPickSession(s.id)}
+                className="w-full text-left rounded border border-slate-800 px-3 py-2 text-sm text-slate-300 hover:bg-slate-900"
+              >
+                <span className="font-semibold">{s.name}</span>
+                <span className="text-[11px] text-slate-500 ml-2">
+                  {s.encounters.length} encounter{s.encounters.length === 1 ? '' : 's'}
+                  {s.snapshot ? ' · mid-fight snapshot saved' : ''}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function SessionEditor({
+  session,
+  campaign,
+  statblocks,
+  onLoaded,
+  onBack,
+}: {
+  session: Session
+  campaign: Campaign
+  statblocks: Statblock[]
+  onLoaded: () => void
+  onBack: () => void
+}) {
+  const updateSession = useStore((s) => s.updateSession)
+  const removeSession = useStore((s) => s.removeSession)
+  const saveCurrent = useStore((s) => s.saveCurrentAsEncounter)
+  const saveSnapshot = useStore((s) => s.saveSessionSnapshot)
+  const loadSnapshot = useStore((s) => s.loadSessionSnapshot)
+  const combatants = useStore((s) => s.combatants)
+
+  const setEncounters = (encounters: EncounterTemplate[]) =>
+    updateSession(session.id, { encounters })
+
+  const addEncounter = () =>
+    setEncounters([
+      ...session.encounters,
+      { id: newId(), name: 'New Encounter', roster: [] },
+    ])
+
+  const updateEncounter = (id: string, patch: Partial<EncounterTemplate>) =>
+    setEncounters(session.encounters.map((e) => (e.id === id ? { ...e, ...patch } : e)))
+
+  const removeEncounter = (id: string) =>
+    setEncounters(session.encounters.filter((e) => e.id !== id))
+
+  const exportSession = () => {
+    const payload = {
+      type: 'turnkeeper-session',
+      version: 1,
+      session,
+      statblocks: referencedStatblocks(session, statblocks),
+    }
+    downloadJson(payload, `session-${slug(session.name)}.json`)
+  }
+
+  const snap = session.snapshot
+
+  return (
+    <div className="p-4 space-y-4">
+      <div className="flex items-center gap-2">
+        <button onClick={onBack} className="btn text-xs" title="Back to campaign">
+          ← {campaign.name}
+        </button>
+        <input
+          value={session.name}
+          onChange={(e) => updateSession(session.id, { name: e.target.value })}
+          className="input flex-1 font-semibold text-base"
+        />
+        <button onClick={exportSession} className="btn text-xs">
+          Export
+        </button>
+        <button
+          onClick={() => {
+            if (confirm(`Delete session "${session.name}" and its encounters?`))
+              removeSession(session.id)
+          }}
+          className="btn-danger text-xs"
+        >
+          Delete
+        </button>
+      </div>
+      <textarea
+        value={session.notes ?? ''}
+        onChange={(e) => updateSession(session.id, { notes: e.target.value })}
+        placeholder="Session notes — what you plan to run, where the last one ended…"
         className="input w-full text-sm"
         rows={2}
       />
 
+      {/* Mid-fight snapshot: the "pack up, resume next week" affordance. */}
+      <div className="rounded-lg border border-indigo-900 bg-indigo-950/30 p-3 space-y-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <h4 className="font-semibold text-sm">Mid-fight snapshot</h4>
+          <div className="flex-1" />
+          <button
+            onClick={() => {
+              if (combatants.length === 0) {
+                alert('No combatants in the current fight to snapshot.')
+                return
+              }
+              if (snap && !confirm('Overwrite the existing snapshot?')) return
+              saveSnapshot(session.id)
+            }}
+            className="btn text-xs"
+            title="Capture the live board — HP, conditions, round, turn marker — so this session can be resumed exactly where it left off"
+          >
+            Save live board
+          </button>
+          {snap && (
+            <>
+              <button
+                onClick={() => {
+                  if (
+                    combatants.length === 0 ||
+                    confirm(
+                      `Resume this session's snapshot? This replaces the current ${combatants.length} combatant(s).`
+                    )
+                  ) {
+                    loadSnapshot(session.id)
+                    onLoaded()
+                  }
+                }}
+                className="btn-primary text-xs"
+              >
+                Resume ▶
+              </button>
+              <button
+                onClick={() => {
+                  if (confirm('Discard the saved snapshot?')) updateSession(session.id, { snapshot: undefined })
+                }}
+                className="btn text-xs text-red-400"
+              >
+                Discard
+              </button>
+            </>
+          )}
+        </div>
+        {snap ? (
+          <div className="text-[11px] text-indigo-300">
+            Saved {new Date(snap.savedAt).toLocaleString()} — round {snap.round},{' '}
+            {snap.combatants.length} combatant{snap.combatants.length === 1 ? '' : 's'}.
+            HP, conditions, death saves and the fight log are all captured.
+          </div>
+        ) : (
+          <div className="text-[11px] text-indigo-300/70">
+            No snapshot. Save the live board mid-fight to resume it later —
+            rules (triggers, tables) stay live, only the fight state is captured.
+          </div>
+        )}
+      </div>
+
       <div className="space-y-3">
-        {scene.encounters.map((enc) => (
+        {session.encounters.map((enc) => (
           <EncounterEditor
             key={enc.id}
             encounter={enc}
             statblocks={statblocks}
             onChange={(patch) => updateEncounter(enc.id, patch)}
             onRemove={() => removeEncounter(enc.id)}
-            sceneId={scene.id}
+            sessionId={session.id}
             onLoaded={onLoaded}
           />
         ))}
@@ -266,10 +466,10 @@ function SceneEditor({
               return
             }
             const name = prompt('Save the current fight as a new encounter named:')
-            if (name?.trim()) saveCurrent(scene.id, name.trim())
+            if (name?.trim()) saveCurrent(session.id, name.trim())
           }}
           className="btn"
-          title="Capture the current live combatants as a new encounter in this scene"
+          title="Capture the current live combatants as a fresh full-HP encounter template in this session"
         >
           Save current fight here
         </button>
@@ -283,14 +483,14 @@ function EncounterEditor({
   statblocks,
   onChange,
   onRemove,
-  sceneId,
+  sessionId,
   onLoaded,
 }: {
   encounter: EncounterTemplate
   statblocks: Statblock[]
   onChange: (patch: Partial<EncounterTemplate>) => void
   onRemove: () => void
-  sceneId: string
+  sessionId: string
   onLoaded: () => void
 }) {
   const loadEncounter = useStore((s) => s.loadEncounter)
@@ -311,7 +511,7 @@ function EncounterEditor({
         `Load "${enc.name}"? This replaces the current ${combatants.length} combatant(s).`
       )
     if (!proceed) return
-    loadEncounter(sceneId, enc.id)
+    loadEncounter(sessionId, enc.id)
     onLoaded()
   }
 
@@ -462,6 +662,24 @@ function RosterRow({
             className="input w-14"
           />
         </label>
+        {r.type === 'monster' && (
+          <label
+            className="flex items-center gap-1"
+            title="Legendary actions per round (0 = none). A reminder window appears after other turns while uses remain."
+          >
+            Leg.
+            <input
+              type="number"
+              min={0}
+              max={3}
+              value={r.legendaryActions ?? 0}
+              onChange={(e) =>
+                onChange({ legendaryActions: Math.min(3, num(e.target.value)) })
+              }
+              className="input w-14"
+            />
+          </label>
+        )}
         <span className="mx-1 text-slate-700">|</span>
         <label className="flex items-center gap-1">
           Init
@@ -687,7 +905,7 @@ function StatblocksTab() {
 
 // ---------------- helpers ----------------
 
-const slug = (s: string) => s.replace(/\W+/g, '-').toLowerCase() || 'scene'
+const slug = (s: string) => s.replace(/\W+/g, '-').toLowerCase() || 'session'
 
 function downloadJson(payload: unknown, filename: string) {
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })

@@ -1,11 +1,26 @@
 import { useState } from 'react'
 import { useStore } from '../store'
+import { CONDITIONS } from '../data/conditions'
 import type { RollTable, Trigger, TriggerDedupe, TriggerEventKind } from '../types'
+
+type TriggerActionKind = Trigger['action']['kind']
 
 const EVENT_OPTIONS: { value: TriggerEventKind; label: string }[] = [
   { value: 'massiveDamage', label: 'Single hit ≥ % of max HP' },
   { value: 'hpReachedZero', label: 'Combatant drops to 0 HP' },
+  { value: 'hpBelow', label: 'HP crosses below % of max' },
   { value: 'combatantAdded', label: 'Combatant is added' },
+  { value: 'turnStart', label: 'A combatant’s turn begins' },
+  { value: 'roundStart', label: 'A round begins' },
+  { value: 'conditionGained', label: 'A condition is applied' },
+]
+
+const ACTION_OPTIONS: { value: TriggerActionKind; label: string }[] = [
+  { value: 'rollTable', label: 'Roll on a table' },
+  { value: 'notify', label: 'Show a note' },
+  { value: 'applyCondition', label: 'Apply a condition' },
+  { value: 'damage', label: 'Deal automatic damage' },
+  { value: 'heal', label: 'Restore HP automatically' },
 ]
 
 const SCOPE_OPTIONS: { value: Trigger['scope']; label: string }[] = [
@@ -26,32 +41,82 @@ const DEDUPE_LABEL: Record<TriggerDedupe, string> = {
   perRound: 'once per round',
 }
 
+const VISIBILITY_OPTIONS: { value: Trigger['visibility']; label: string }[] = [
+  { value: 'dm', label: 'DM only' },
+  { value: 'players', label: 'Players only' },
+  { value: 'both', label: 'DM + players' },
+]
+
+const conditionName = (id: string) =>
+  CONDITIONS.find((c) => c.id === id)?.name ?? id
+
+// Round-level events have no combatant, so scope and dedupe don't apply.
+const isRoundLevel = (t: Trigger) => t.event.kind === 'roundStart'
+
 function describe(t: Trigger, tables: RollTable[]): string {
   let when: string
-  if (t.event.kind === 'massiveDamage')
-    when = `a single hit deals ≥ ${t.event.percentOfMax}% of max HP`
-  else if (t.event.kind === 'hpReachedZero') when = 'a combatant drops to 0 HP'
-  else when = 'a combatant is added'
+  switch (t.event.kind) {
+    case 'massiveDamage':
+      when = `a single hit deals ≥ ${t.event.percentOfMax}% of max HP`
+      break
+    case 'hpReachedZero':
+      when = 'a combatant drops to 0 HP'
+      break
+    case 'combatantAdded':
+      when = 'a combatant is added'
+      break
+    case 'hpBelow':
+      when = `HP crosses below ${t.event.percentOfMax}% of max`
+      break
+    case 'roundStart':
+      when = t.event.round === 0 ? 'every round begins' : `round ${t.event.round} begins`
+      break
+    case 'turnStart':
+      when = 'a scoped combatant’s turn begins'
+      break
+    case 'conditionGained':
+      when = `a combatant gains ${conditionName(t.event.conditionId)}`
+      break
+  }
 
   const scope =
-    t.scope === 'any' ? '' : ` (${t.scope === 'pc' ? 'PCs' : 'monsters'} only)`
+    isRoundLevel(t) || t.scope === 'any'
+      ? ''
+      : ` (${t.scope === 'pc' ? 'PCs' : 'monsters'} only)`
 
   let then: string
-  if (t.action.kind === 'rollTable') {
-    const action = t.action
-    const table = tables.find((x) => x.id === action.tableId)
-    then = `roll ${table ? `"${table.name}"` : '(no table)'}${
-      action.rolls > 1 ? ` ×${action.rolls}` : ''
-    }`
-  } else {
-    then = 'show a note'
+  switch (t.action.kind) {
+    case 'rollTable': {
+      const action = t.action
+      const table = tables.find((x) => x.id === action.tableId)
+      then = `roll ${table ? `"${table.name}"` : '(no table)'}${
+        action.rolls > 1 ? ` ×${action.rolls}` : ''
+      }`
+      break
+    }
+    case 'notify':
+      then = 'show a note'
+      break
+    case 'applyCondition':
+      then = `apply ${conditionName(t.action.conditionId)}${
+        t.action.rounds != null ? ` for ${t.action.rounds} round(s)` : ''
+      }${t.action.saveEnds ? ' (save ends)' : ''}`
+      break
+    case 'damage':
+      then = `deal ${t.action.amount} damage automatically`
+      break
+    case 'heal':
+      then = `restore ${t.action.amount} HP automatically`
+      break
   }
   // Cadence only applies to per-combatant events.
   const cadence =
-    t.event.kind === 'combatantAdded' || t.dedupe === 'always'
+    isRoundLevel(t) || t.event.kind === 'combatantAdded' || t.dedupe === 'always'
       ? ''
       : ` (${DEDUPE_LABEL[t.dedupe]})`
-  return `When ${when}${scope} → ${then}${cadence}.`
+  const vis =
+    t.visibility === 'both' ? '' : t.visibility === 'dm' ? ' [DM only]' : ' [players only]'
+  return `When ${when}${scope} → ${then}${cadence}.${vis}`
 }
 
 export default function SettingsPanel() {
@@ -62,6 +127,8 @@ export default function SettingsPanel() {
   const labelNames = useStore((s) => s.strategyLabelNames)
   const addLabel = useStore((s) => s.addStrategyLabel)
   const removeLabel = useStore((s) => s.removeStrategyLabel)
+  const lairAction = useStore((s) => s.lairAction)
+  const setLairAction = useStore((s) => s.setLairAction)
 
   const [newLabel, setNewLabel] = useState('')
 
@@ -73,6 +140,7 @@ export default function SettingsPanel() {
       dedupe: 'perTurn',
       event: { kind: 'massiveDamage', percentOfMax: 25 },
       action: { kind: 'rollTable', tableId: tables[0]?.id ?? null, rolls: 1 },
+      visibility: 'both',
     })
   }
 
@@ -86,12 +154,15 @@ export default function SettingsPanel() {
           </button>
         </div>
         <p className="text-xs text-slate-400 mb-3">
-          Rules that fire when something happens in combat — "when EVENT → roll a
-          table." The injury rule is two triggers: a single hit dealing ≥ 25 % of
-          max HP rolls the injury table once; ≥ 50 % rolls the <em>same</em> table
-          twice. When several massive-damage triggers match one hit, only the
-          highest fires. <code>Once per turn</code> triggers fire at most once per
-          combatant per turn and reset on every turn advance.
+          Rules that fire when something happens in combat — "when EVENT → do
+          ACTION." The seeded injury rule is two triggers on one sample table:
+          a single hit dealing ≥ 25 % of max HP rolls the injury table once; ≥
+          50 % rolls the <em>same</em> table twice. When several thresholds
+          match one hit, only the most severe fires. HP thresholds are
+          crossing-based (healing back above re-arms them), and automatic
+          damage/heal from a trigger never re-fires triggers — bleeding engines
+          can’t cascade. <b>DM + players</b> results also appear as a banner
+          on the player window.
         </p>
 
         <div className="space-y-2">
@@ -112,6 +183,54 @@ export default function SettingsPanel() {
         >
           Reset fired triggers now
         </button>
+      </section>
+
+      <section>
+        <h3 className="font-semibold mb-1">Lair action</h3>
+        <p className="text-xs text-slate-400 mb-2">
+          Optionally mark a lair-action slot at an initiative count (5e
+          convention: 20). A marker row appears in the initiative order and a
+          reminder fires when the count is passed — visible to players too.
+        </p>
+        {lairAction ? (
+          <div className="rounded-lg border border-slate-700 bg-slate-900 p-3 flex items-center gap-2 flex-wrap text-sm">
+            <input
+              value={lairAction.name}
+              onChange={(e) =>
+                setLairAction({ ...lairAction, name: e.target.value })
+              }
+              className="input flex-1 min-w-[8rem]"
+              placeholder="Lair Action"
+            />
+            <label className="flex items-center gap-1 text-xs text-slate-400">
+              Initiative
+              <input
+                type="number"
+                min={-20}
+                max={40}
+                value={lairAction.initiative}
+                onChange={(e) => {
+                  const n = parseInt(e.target.value, 10)
+                  if (!isNaN(n)) setLairAction({ ...lairAction, initiative: n })
+                }}
+                className="input w-16"
+              />
+            </label>
+            <button
+              onClick={() => setLairAction(null)}
+              className="btn text-red-400 text-xs"
+            >
+              Disable
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setLairAction({ initiative: 20, name: 'Lair Action' })}
+            className="btn text-xs"
+          >
+            Enable lair action at initiative 20
+          </button>
+        )}
       </section>
 
       <section>
@@ -178,18 +297,30 @@ function TriggerEditor({ trigger: t, tables }: { trigger: Trigger; tables: RollT
   const remove = useStore((s) => s.removeTrigger)
 
   const setEventKind = (kind: TriggerEventKind) => {
-    if (kind === 'massiveDamage')
-      update(t.id, { event: { kind, percentOfMax: 25 } })
+    if (kind === 'massiveDamage' || kind === 'hpBelow')
+      update(t.id, { event: { kind, percentOfMax: 50 } })
+    else if (kind === 'roundStart') update(t.id, { event: { kind, round: 1 } })
+    else if (kind === 'conditionGained')
+      update(t.id, { event: { kind, conditionId: CONDITIONS[0].id } })
     else update(t.id, { event: { kind } })
   }
 
-  const setActionKind = (kind: 'rollTable' | 'notify') => {
+  const setActionKind = (kind: TriggerActionKind) => {
     if (kind === 'rollTable')
+      update(t.id, { action: { kind, tableId: tables[0]?.id ?? null, rolls: 1 } })
+    else if (kind === 'notify') update(t.id, { action: { kind, text: '' } })
+    else if (kind === 'applyCondition')
       update(t.id, {
-        action: { kind, tableId: tables[0]?.id ?? null, rolls: 1 },
+        action: { kind, conditionId: CONDITIONS[0].id, rounds: null, saveEnds: false },
       })
-    else update(t.id, { action: { kind, text: '' } })
+    else if (kind === 'damage') update(t.id, { action: { kind, amount: 5 } })
+    else update(t.id, { action: { kind: 'heal', amount: 5 } })
   }
+
+  // The action select's value is the discriminating kind — but when the
+  // legacy action shape is somehow missing, fall back to notify so the
+  // editor still renders something coherent.
+  const actionKind: TriggerActionKind = t.action.kind
 
   return (
     <div
@@ -238,7 +369,7 @@ function TriggerEditor({ trigger: t, tables }: { trigger: Trigger; tables: RollT
           </select>
         </label>
 
-        {t.event.kind === 'massiveDamage' && (
+        {(t.event.kind === 'massiveDamage' || t.event.kind === 'hpBelow') && (
           <label className="flex flex-col gap-0.5">
             <span className="text-[10px] uppercase tracking-wide text-slate-500">
               Threshold %
@@ -250,24 +381,87 @@ function TriggerEditor({ trigger: t, tables }: { trigger: Trigger; tables: RollT
               value={t.event.percentOfMax}
               onChange={(e) => {
                 const n = parseInt(e.target.value, 10)
-                if (!isNaN(n) && n > 0 && n <= 100)
+                if (isNaN(n) || n <= 0 || n > 100) return
+                // Re-narrow inside the callback — JSX condition narrowing
+                // doesn't cross function boundaries.
+                if (t.event.kind === 'massiveDamage')
                   update(t.id, { event: { kind: 'massiveDamage', percentOfMax: n } })
+                else if (t.event.kind === 'hpBelow')
+                  update(t.id, { event: { kind: 'hpBelow', percentOfMax: n } })
               }}
               className="input w-24"
             />
           </label>
         )}
 
+        {t.event.kind === 'roundStart' && (
+          <label className="flex flex-col gap-0.5">
+            <span className="text-[10px] uppercase tracking-wide text-slate-500">
+              Round (0 = every round)
+            </span>
+            <input
+              type="number"
+              min={0}
+              max={99}
+              value={t.event.round}
+              onChange={(e) => {
+                const n = parseInt(e.target.value, 10)
+                if (!isNaN(n) && n >= 0)
+                  update(t.id, { event: { kind: 'roundStart', round: n } })
+              }}
+              className="input w-24"
+            />
+          </label>
+        )}
+
+        {t.event.kind === 'conditionGained' && (
+          <label className="flex flex-col gap-0.5">
+            <span className="text-[10px] uppercase tracking-wide text-slate-500">
+              Condition
+            </span>
+            <select
+              value={t.event.conditionId}
+              onChange={(e) =>
+                update(t.id, { event: { kind: 'conditionGained', conditionId: e.target.value } })
+              }
+              className="input"
+            >
+              {CONDITIONS.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.icon} {c.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+
+        {!isRoundLevel(t) && (
+          <label className="flex flex-col gap-0.5">
+            <span className="text-[10px] uppercase tracking-wide text-slate-500">
+              Applies to
+            </span>
+            <select
+              value={t.scope}
+              onChange={(e) => update(t.id, { scope: e.target.value as Trigger['scope'] })}
+              className="input"
+            >
+              {SCOPE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+
         <label className="flex flex-col gap-0.5">
-          <span className="text-[10px] uppercase tracking-wide text-slate-500">
-            Applies to
-          </span>
+          <span className="text-[10px] uppercase tracking-wide text-slate-500">Then</span>
           <select
-            value={t.scope}
-            onChange={(e) => update(t.id, { scope: e.target.value as Trigger['scope'] })}
+            value={actionKind}
+            onChange={(e) => setActionKind(e.target.value as TriggerActionKind)}
             className="input"
           >
-            {SCOPE_OPTIONS.map((o) => (
+            {ACTION_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>
                 {o.label}
               </option>
@@ -276,14 +470,22 @@ function TriggerEditor({ trigger: t, tables }: { trigger: Trigger; tables: RollT
         </label>
 
         <label className="flex flex-col gap-0.5">
-          <span className="text-[10px] uppercase tracking-wide text-slate-500">Then</span>
+          <span className="text-[10px] uppercase tracking-wide text-slate-500">
+            Show result to
+          </span>
           <select
-            value={t.action.kind}
-            onChange={(e) => setActionKind(e.target.value as 'rollTable' | 'notify')}
+            value={t.visibility}
+            onChange={(e) =>
+              update(t.id, { visibility: e.target.value as Trigger['visibility'] })
+            }
             className="input"
+            title="Where the fired result appears — the DM toast, the player window's banner, or both"
           >
-            <option value="rollTable">Roll a table</option>
-            <option value="notify">Show a note</option>
+            {VISIBILITY_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
           </select>
         </label>
 
@@ -337,10 +539,10 @@ function TriggerEditor({ trigger: t, tables }: { trigger: Trigger; tables: RollT
               />
             </label>
           </>
-        ) : (
+        ) : t.action.kind === 'notify' ? (
           <label className="flex flex-col gap-0.5 sm:col-span-2">
             <span className="text-[10px] uppercase tracking-wide text-slate-500">
-              Note to show the DM
+              Note to show
             </span>
             <input
               value={t.action.kind === 'notify' ? t.action.text : ''}
@@ -348,13 +550,114 @@ function TriggerEditor({ trigger: t, tables }: { trigger: Trigger; tables: RollT
                 update(t.id, { action: { kind: 'notify', text: e.target.value } })
               }
               className="input"
-              placeholder="e.g. Remind the player to make a CON save"
+              placeholder="e.g. The ceiling rumbles — remind players to save"
+            />
+          </label>
+        ) : t.action.kind === 'applyCondition' ? (
+          <>
+            <label className="flex flex-col gap-0.5">
+              <span className="text-[10px] uppercase tracking-wide text-slate-500">
+                Condition
+              </span>
+              <select
+                value={t.action.conditionId}
+                onChange={(e) =>
+                  update(t.id, {
+                    action: {
+                      kind: 'applyCondition',
+                      conditionId: e.target.value,
+                      rounds: t.action.kind === 'applyCondition' ? t.action.rounds : null,
+                      saveEnds:
+                        t.action.kind === 'applyCondition' ? t.action.saveEnds : false,
+                    },
+                  })
+                }
+                className="input"
+              >
+                {CONDITIONS.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.icon} {c.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="flex items-end gap-3 flex-wrap">
+              <label className="flex flex-col gap-0.5">
+                <span className="text-[10px] uppercase tracking-wide text-slate-500">
+                  Rounds (blank = untimed)
+                </span>
+                <input
+                  type="number"
+                  min={1}
+                  max={99}
+                  value={t.action.kind === 'applyCondition' ? (t.action.rounds ?? '') : ''}
+                  onChange={(e) => {
+                    const n = parseInt(e.target.value, 10)
+                    update(t.id, {
+                      action: {
+                        kind: 'applyCondition',
+                        conditionId:
+                          t.action.kind === 'applyCondition'
+                            ? t.action.conditionId
+                            : CONDITIONS[0].id,
+                        rounds: !isNaN(n) && n > 0 ? n : null,
+                        saveEnds:
+                          t.action.kind === 'applyCondition' ? t.action.saveEnds : false,
+                      },
+                    })
+                  }}
+                  className="input w-24"
+                />
+              </label>
+              {t.action.kind === 'applyCondition' && (
+                <label className="flex items-center gap-1.5 text-xs text-slate-400 pb-2">
+                  <input
+                    type="checkbox"
+                    checked={t.action.saveEnds}
+                    onChange={(e) => {
+                      if (t.action.kind !== 'applyCondition') return
+                      update(t.id, {
+                        action: {
+                          kind: 'applyCondition',
+                          conditionId: t.action.conditionId,
+                          rounds: t.action.rounds,
+                          saveEnds: e.target.checked,
+                        },
+                      })
+                    }}
+                  />
+                  Save ends
+                </label>
+              )}
+            </div>
+          </>
+        ) : (
+          <label className="flex flex-col gap-0.5">
+            <span className="text-[10px] uppercase tracking-wide text-slate-500">
+              Amount
+            </span>
+            <input
+              type="number"
+              min={1}
+              max={999}
+              value={t.action.amount}
+              onChange={(e) => {
+                const n = parseInt(e.target.value, 10)
+                const amount = !isNaN(n) && n > 0 ? n : 1
+                update(t.id, {
+                  action:
+                    t.action.kind === 'damage'
+                      ? { kind: 'damage', amount }
+                      : { kind: 'heal', amount },
+                })
+              }}
+              className="input w-24"
             />
           </label>
         )}
       </div>
 
-      {t.event.kind !== 'combatantAdded' && (
+      {!isRoundLevel(t) && t.event.kind !== 'combatantAdded' && (
         <label className="flex items-center gap-2 text-xs text-slate-400">
           <span className="text-[10px] uppercase tracking-wide text-slate-500">
             Fire at most

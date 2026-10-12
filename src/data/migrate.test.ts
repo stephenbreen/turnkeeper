@@ -93,7 +93,55 @@ describe('migratePersisted', () => {
 
   it('seeds the prep library for saves that predate it', () => {
     const out = migratePersisted({ combatants: [] })
-    expect(out.scenes.length).toBeGreaterThan(0)
+    expect(out.campaigns.length).toBeGreaterThan(0)
+    expect(out.campaigns[0].sessions.length).toBeGreaterThan(0)
     expect(out.statblocks.length).toBeGreaterThan(0)
+  })
+
+  it('wraps v5 scenes as sessions inside one campaign (v6)', () => {
+    const scene = { id: 'sc1', name: 'Wishing Well', encounters: [] }
+    const out = migratePersisted({ combatants: [], scenes: [scene] })
+    expect(out.campaigns).toHaveLength(1)
+    expect(out.campaigns[0].sessions).toEqual([scene])
+    expect((out as Record<string, unknown>).scenes).toBeUndefined()
+  })
+
+  it('backfills trigger visibility preserving legacy behaviour (v6)', () => {
+    const out = migratePersisted({
+      combatants: [],
+      triggers: [
+        {
+          id: 't1',
+          name: 'Injury',
+          enabled: true,
+          scope: 'any',
+          dedupe: 'perTurn',
+          event: { kind: 'massiveDamage', percentOfMax: 25 },
+          action: { kind: 'rollTable', tableId: 'tbl', rolls: 1 },
+        },
+        {
+          id: 't2',
+          name: 'Note',
+          enabled: true,
+          scope: 'any',
+          dedupe: 'always',
+          event: { kind: 'combatantAdded' },
+          action: { kind: 'notify', text: 'hi' },
+        },
+      ],
+    })
+    expect(out.triggers[0].visibility).toBe('both') // rollTable showed on the player banner
+    expect(out.triggers[1].visibility).toBe('dm') // notify was DM-only
+  })
+
+  it('adds legendary tracking, lair action and event log defaults (v6)', () => {
+    const out = migratePersisted({
+      combatants: [{ id: 'a', currentHP: 5, maxHP: 10 }],
+    })
+    expect(out.combatants[0].legendaryActions).toBe(0)
+    expect(out.combatants[0].legendaryUsed).toBe(0)
+    expect(out.lairAction).toBeNull()
+    expect(out.lairFiredRound).toBeNull()
+    expect(out.eventLog).toEqual([])
   })
 })

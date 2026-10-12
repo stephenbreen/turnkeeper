@@ -18,7 +18,7 @@ persists to `localStorage`.
 ## Stack
 
 React 18 · TypeScript (strict) · Vite · Zustand (with `persist`) · Tailwind CSS.
-No router (view is chosen by URL param), no test runner, no linter configured.
+No router (view is chosen by URL param); tests run on vitest; no linter configured.
 
 ## Commands
 
@@ -71,43 +71,95 @@ Persistence and cross-window sync are driven by two key arrays near the top of
 - `SYNC_KEYS` — broadcast to the player window.
 
 These two lists are **not** subset-of each other:
-- `triggerResults` syncs but is **not** persisted (transient injury queue).
-- `scenes` and `statblocks` (the prep library) **persist but do NOT sync** —
-  they're DM-only, which also keeps monster stats off the player window
-  entirely. A combatant's `statblockId` does sync, but the statblock content
-  stays DM-side.
+- `triggerResults` syncs but is **not** persisted (transient toast queue).
+- `campaigns` and `statblocks` (prep material) **persist but do NOT sync** —
+  they're DM-only, which also keeps monster stats and planning notes off the
+  player window entirely. A combatant's `statblockId` does sync, but the
+  statblock content stays DM-side.
+- `eventLog` (the fight history) persists but does NOT sync — DM-only.
+- `lairAction` / `lairFiredRound` sync (the player window renders the lair
+  slot in the order and the lair announcement banner).
 
 Add your new field to whichever apply. If you change the persisted *shape*,
 bump `version` in the `persist` options and extend `migratePersisted` in
 `src/data/migrate.ts` (kept light so it's unit-testable without loading the
-store). Current schema is **v5** (v0 thresholds → triggers; v1 `oncePerTurn` →
-`dedupe`; v3 seeds the `scenes`/`statblocks` library; v4 temp HP/death
-saves/concentration/timed conditions; v5 `currentTurnIndex` →
-`currentCombatantId`).
+store). Current schema is **v6** (v0 thresholds → triggers; v1 `oncePerTurn` →
+`dedupe`; v3 seeds the library; v4 temp HP/death saves/concentration/timed
+conditions; v5 `currentTurnIndex` → `currentCombatantId`; v6 wraps `scenes`
+as sessions inside one campaign, backfills trigger `visibility`, adds
+legendary tracking, the lair-action setting and the event log).
 
 ## Domain model (`src/types.ts`)
 
 - `Combatant` — `pc` | `monster`, with HP/AC/PP/initiative, `conditions`
-  (5e status ids), `strategyLabels` (stackable DM tags), `firedThresholds`.
+  (5e status ids), `strategyLabels` (stackable DM tags), `legendaryActions` /
+  `legendaryUsed` (per-round boss actions), and the fired-trigger dedupe
+  arrays.
 - `RollTable` / `TableEntry` — DM-authored tables. `range` is a string like
-  `"1-5"` or `"20"`, matched by `matchTableEntry` in `utils/dice.ts`.
-  `builtIn?: 'injury25' | 'injury50'` marks the seeded injury tables.
-- **Massive-damage triggers** are NOT a stored entity. They are computed in
-  `applyDamage`: a single hit ≥ a `thresholds[]` percent of max HP sets
-  `lastTrigger` (transient), which `InjuryToast` (DM) and `PlayerInjuryBanner`
-  (player) render. `firedThresholds` makes each threshold fire at most once
-  per combatant per turn; it is cleared on every turn change.
+  `"1-5"` or `"20"`, matched by `matchTableEntry` in `utils/dice.ts`. The two
+  seeded tables are editable samples (injury + dramatic complications), not
+  prescribed rules.
+- **Triggers** are first-class stored rules: `event` (massiveDamage %,
+  hpReachedZero, hpBelow %, combatantAdded, roundStart, turnStart,
+  conditionGained) → `action` (rollTable, notify, applyCondition, damage,
+  heal), with `scope` (any/pc/monster), `dedupe` cadence (per-combatant) and
+  `visibility` (dm/players/both — controls whether the result toasts the DM,
+  flashes on the player banner, or both). Fired results queue in
+  `triggerResults`, rendered by `ResultToast` (DM) and
+  `PlayerAnnouncementBanner` (player).
 
-### Prep library & statblocks
+### Trigger engine (`src/store.ts`)
 
-- **Scene → Encounter → roster.** `scenes: Scene[]` is DM prep, separate from the
-  live `combatants`. A `RosterEntry` has a `quantity` and an `InitiativeMode`
-  (`roll-each` / `roll-group` / `static` / `manual`). `loadEncounter` calls
-  `expandRoster` (`src/data/encounter.ts`) to turn a roster into live combatants,
-  rolling initiative, then **replaces** the current combatants.
-- Nested scene edits go through a single `updateScene(id, patch)` — the UI
-  (`LibraryModal.tsx`) computes new `encounters` / `roster` arrays and passes
-  them in, keeping the store surface small.
+- **Evaluation points:** `applyDamage` (massiveDamage / hpReachedZero /
+  hpBelow, plus the concentration save reminder), `addCombatant`
+  (combatantAdded — deliberately NOT fired by bulk adds or duplicates),
+  `toggleCondition` (conditionGained, on add only), and `advanceTurn`
+  (turnStart for the starter, roundStart on round change, lair reminder when
+  the order crosses the configured count).
+- **Most-severe-wins:** one hit fires only the highest massiveDamage
+  threshold crossed, and only the *lowest* hpBelow threshold (dropping to
+  10 % subsumes crossing 50 %).
+- **hpBelow is crossing-based:** fires only when HP moves from above the
+  threshold to at/below it; healing back above re-arms it.
+- **Cascade guard:** non-roll actions (applyCondition / damage / heal) are
+  applied by `applySideEffects` *after* the main `set`, and those changes
+  never re-evaluate triggers — a bleeding engine can't cascade into more
+  rolls or conditions. Round-level results (no combatant) apply to every
+  in-scope combatant.
+- **`advanceTurn` returns `{ partial, fired }`** — callers (`nextTurn`,
+  `tickTimer`) commit the partial, then call `applySideEffects(fired)`. If
+  you add another caller, keep that order.
+- **Legendary uses reset** at the start of the creature's own turn (in
+  `advanceTurn`); `spendLegendaryAction` clamps at the max.
+
+### Event log
+
+`eventLog: LogEntry[]` — append-only, DM-only fight history (damage, heals,
+turns, rounds, triggers, lair/legendary, deaths, loads), capped at
+`LOG_CAP = 1000` entries, appended via the `logAdd` helper in `store.ts`.
+It rides inside session snapshots (so the history survives a mid-fight
+pause), is cleared by `resetEncounter`, and is exported from the
+`Encounter ▾` menu as `{ type: 'turnkeeper-log', version: 1 }` — shaped for a
+future replay viewer.
+
+### Campaign manager & statblocks
+
+- **Campaign → Session → Encounter → roster.** `campaigns: Campaign[]` is
+  DM prep, separate from the live `combatants`. A `RosterEntry` has a
+  `quantity`, an `InitiativeMode` (`roll-each` / `roll-group` / `static` /
+  `manual`) and an optional `legendaryActions` count.
+  `loadEncounter(sessionId, encounterId)` calls `expandRoster`
+  (`src/data/encounter.ts`) to turn a roster into live combatants, rolling
+  initiative, then **replaces** the current combatants.
+- **Session snapshots:** `saveSessionSnapshot` / `loadSessionSnapshot`
+  capture/restore the live board mid-fight (HP, conditions, death saves,
+  round, turn marker, lair guard, event log). Rules (triggers/tables/labels)
+  are deliberately NOT snapshotted — they stay live.
+- Nested edits go through `updateSession(sessionId, patch)` /
+  `updateCampaign(id, patch)` — the UI (`LibraryModal.tsx`) computes new
+  `encounters` / `roster` / `sessions` arrays and passes them in, keeping
+  the store surface small. Session lookups search all campaigns; ids are
+  globally unique.
 - **Statblocks** are parsed by `src/utils/statblock.ts` (`parseStatblocks`, uses
   **`js-yaml`**) which **auto-detects two schemas**: Fantasy Statblocks (Javalent)
   YAML/JSON *and* 5etools/5e.tools bestiary JSON. `normalizeStatblock` coerces
@@ -116,7 +168,8 @@ saves/concentration/timed conditions; v5 `currentTurnIndex` →
   tolerant of partial data. `statblockAC/HP/InitMod` derive numbers for combatant
   prefill. Rendered by `StatblockView.tsx`. Add new formats here, not in the UI.
 - Preset content lives in `src/data/presets.ts` (`buildPresetLibrary`), seeded by
-  both `buildDefaultEncounter` and the v3 migration.
+  both `buildDefaultEncounter` and the v3 migration (which then gets wrapped
+  into a campaign by the v6 step).
 
 ### Terminology caution
 
@@ -185,6 +238,8 @@ design brief.
   clip it — but keep the portal rule in mind for anchored menus.)
 - The right panel collapse (desktop) is App-local state persisted to
   `localStorage['turnkeeper-sidepanel']` — separate from the encounter store.
-- No tests exist. Verify changes by running the app (`npm run dev`) and, for
-  sync/persistence work, opening the player view (`?view=player`) in a second
-  window.
+- Tests cover the engine core (`src/store.test.ts` exercises triggers,
+  legendary, lair and snapshots through store actions; `src/data/*.test.ts`
+  cover migrations, party and roster expansion). When you change engine
+  behaviour, extend those first. For sync/persistence work, also open the
+  player view (`?view=player`) in a second window and smoke it by hand.

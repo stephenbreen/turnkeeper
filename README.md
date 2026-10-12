@@ -9,8 +9,9 @@ about, the players see what they should see, and the two views stay in sync
 via `BroadcastChannel` in the same browser.
 
 > Inspired by the layout of [Kobold+](https://koboldplus.club/), but stripped
-> of SRD content and extended with per-turn timers, configurable massive-damage
-> triggers, and DM-authored roll tables.
+> of SRD content and extended with per-turn timers, a configurable trigger
+> system, lair & legendary action support, DM-authored roll tables, and a
+> campaign manager for planning sessions.
 
 ---
 
@@ -37,50 +38,81 @@ via `BroadcastChannel` in the same browser.
 - HP bar and a status word (`Healthy`, `Hurt`, `Bloodied`, `Dire`, `Dying`,
   `Dead`). Players see only the status word, never numeric HP.
 
-### Triggers (rules that roll tables)
-- A **trigger** is a DM-authored rule — *"when EVENT happens → roll a table"* —
+### Triggers (rules that fire on events)
+- A **trigger** is a DM-authored rule — *"when EVENT happens → do ACTION"* —
   managed in the Settings tab. Each trigger has an event, a scope (all / PCs /
-  monsters), and an action (roll a table N times, or show a note).
-- **Events:** a single hit dealing ≥ *X* % of max HP, a combatant dropping to
-  **0 HP**, or a new **combatant being added** (e.g. roll a reinforcements
-  table).
-- **The injury rule, written clearly:** the 25 % / 50 % distinction is *not*
-  two tables. It is **one injury table** with two triggers — ≥ 25 % rolls it
-  **once**, ≥ 50 % rolls the **same table twice**. When several massive-damage
-  triggers match one hit, only the highest fires.
+  monsters), an action, a dedupe cadence, and a **visibility** setting.
+- **Events:** a single hit dealing ≥ *X* % of max HP · dropping to **0 HP** ·
+  **HP crossing below a % threshold** (bloodied / phase changes;
+  crossing-based, so healing back above re-arms it) · a new **combatant being
+  added** (e.g. roll a reinforcements table) · a given **round beginning**
+  (or every round — "round 3: the ceiling collapses") · a **turn beginning**
+  (lair-action / start-of-turn reminders) · a **condition being applied**.
+- **Actions:** roll on a table N times · show a note · auto-**apply a
+  condition** (with round timer / save-ends) · deal or heal HP automatically
+  (bleeding engines, regeneration). Automatic changes from a trigger never
+  re-fire triggers, so a bleed can't cascade; round-level actions apply to
+  every in-scope combatant.
+- **The seeded injury rule, written clearly:** the 25 % / 50 % distinction is
+  *not* two tables. It is **one sample injury table** with two triggers —
+  ≥ 25 % rolls it **once**, ≥ 50 % rolls the **same table twice**. When
+  several massive-damage triggers match one hit, only the highest fires.
 - **Cadence:** each trigger fires *every time*, *once per turn*, or *once per
   round* per combatant — the last for an effect that should only happen once
   this round. Turn/round counters reset automatically on turn/round change
   ("Reset fired triggers" in Settings / the Encounter menu clears them manually).
-- When a trigger fires, a toast prompts the DM. Players can roll the die
-  physically, or a `Roll` button rolls in-app (twice for a 50 % injury).
-  Injury reveals flash on the player view; combatant-added notes stay DM-only.
+- **Visibility:** results toast the DM, flash as a **banner on the player
+  view**, or both — your choice per trigger, for dramatic reveals. When a
+  table trigger fires, players can roll the die physically, or a `Roll`
+  button rolls in-app (twice for a 50 % injury).
+
+### Lair & legendary actions
+- **Lair action:** optionally mark a slot at an initiative count (5e
+  convention: 20). A purple marker row appears in the order on both windows
+  and a reminder fires when the count is passed — once per round. Nothing is
+  automated; it's a narration prompt.
+- **Legendary actions:** give a boss a per-round count (when adding it, or on
+  its roster line). While it has uses left and someone else's turn is
+  underway, a ⚡ reminder row is interjected after the active card on both
+  windows — click **Legendary** on the card to spend one. Uses return
+  automatically at the start of its own turn.
 
 ### DM-authored roll tables
-- An **Injury Table** is seeded with editable starter entries.
+- Two **editable samples** are seeded — an **Injury Table** and a **Dramatic
+  Complications** table — as starting points, not prescribed rules. Rewrite
+  or replace them freely.
 - Add new tables (treasure, complications, reinforcements, whatever). Each table
   has a name, a dice expression, and a list of `range → text` entries; entries
   reorder with ▲/▼.
 - **Duplicate** any table to spin a variant, and **delete** any table.
 - Import / export individual tables as JSON. Point any trigger at any table.
 
-### Prep library — Scenes, Encounters & Statblocks
-- A **Library** (📚 in the header, or `L`) organises prep as **Scene → Encounter**
-  — e.g. *Wishing Well* → *Goblin Ambush* / *Griffin Attack*. Ships with an
-  example scene so new users can see how it works.
+### Campaign manager — Campaigns, Sessions & Statblocks
+- A **Library** (📚 in the header, or `L`) organises prep as
+  **Campaign → Session → Encounter** — a campaign holds the game nights you
+  plan (with notes for the arc), each session holds the encounters you might
+  run. Ships with an example so new users can see how it works.
 - Each roster line has a **quantity** that expands on load (Goblin ×4 → Goblin
-  1–4) and an **initiative mode**: roll each, roll as a group (one shared roll),
-  static, or keep it manual for live entry. Rolls are `1d20 + modifier`.
-- **Load ▶** replaces the live fight with the encounter (rolling initiative as
-  configured); **Save current fight here** captures the board back into a scene.
-- **Export / import** whole scenes as JSON (bundling their statblocks).
+  1–4), an **initiative mode** (roll each, roll as a group, static, or manual
+  for live entry — rolls are `1d20 + modifier`), and a **legendary actions**
+  count for bosses.
+- **Load ▶** replaces the live fight with the encounter (rolling initiative
+  as configured); **Save current fight here** captures the board back as a
+  fresh full-HP template.
+- **Mid-fight snapshot:** the "pack up mid-boss-fight, resume next week"
+  button. **Save live board** captures HP, conditions, death saves, round,
+  turn marker *and the fight log* into the session; **Resume ▶** restores it
+  exactly. Rules (triggers, tables) stay live, so tweaks between sessions
+  apply on resume.
+- **Export / import** whole sessions as JSON (bundling their statblocks).
 - **Statblocks:** import [Fantasy Statblocks](https://plugins.javalent.com/statblocks/readme/code-block)
   YAML **or** 5etools / 5e.tools bestiary JSON (paste or upload) — a single
   monster, a JSON array, a bestiary `{ "monster": [ … ] }` file, or YAML
   multi-docs. 5etools array/object fields and `{@tag}` markup are converted to
   readable text automatically. Link one to a roster line or combatant; hover the
   **📜 statblock** chip for a quick line or click / expand for the full 5e-styled
-  block. Statblocks are DM-only and never sync to the player view.
+  block. Statblocks are DM-only and never sync to the player view — campaigns
+  and planning notes don't either.
 
 ### Conditions and strategy labels
 - Standard 5e conditions (including Exhaustion 1–6), **each with an icon** for
@@ -117,6 +149,11 @@ via `BroadcastChannel` in the same browser.
   resumes exactly where you left off.
 - `Encounter ▾` menu exports the entire encounter as JSON and imports one
   back. Good for prepping fights ahead of time.
+- **Export fight log** writes the current fight's full history — every turn,
+  round, damage tick, heal, death save, trigger, lair and legendary action —
+  as replay-shaped JSON (`turnkeeper-log-…json`). The log is DM-only and
+  clears when you start a new encounter, so export it first if you want to
+  keep it.
 
 ---
 
@@ -186,14 +223,18 @@ of truth for the store definition.
 ```
 EncounterState = {
   combatants: Combatant[]
-  currentTurnIndex, round
+  currentCombatantId: string | null  // whose turn it is (id, not position)
+  round
   timerSeconds, timerRemaining, timerRunning
-  triggers: Trigger[]               // rules: "when EVENT → roll a table"
+  triggers: Trigger[]               // rules: "when EVENT → ACTION"
   strategyLabelNames: string[]      // e.g. ['Surrounded']
   tables: RollTable[]
   triggerResults: TriggerResult[]   // pending toasts (synced, not persisted)
-  scenes: Scene[]                   // prep library (DM-only, not synced)
-  statblocks: Statblock[]           // prep library (DM-only, not synced)
+  campaigns: Campaign[]             // Campaign → Session → Encounter prep
+                                    // (DM-only, not synced) + session snapshots
+  statblocks: Statblock[]           // DM-only, not synced
+  lairAction, lairFiredRound       // lair slot + once-per-round guard
+  eventLog: LogEntry[]              // DM-only fight history (not synced)
 }
 ```
 
@@ -203,8 +244,9 @@ selectors (`useStore(s => s.combatants)`) so re-renders are surgical.
 
 `triggerResults` — the pending toasts — is broadcast but **not** persisted,
 so the DM never reopens into a stale injury prompt. The player window
-receives it too, but `PlayerInjuryBanner` only renders injury-type reveals;
-DM-facing events (combatant added, plain notifications) are filtered out.
+receives it too; `PlayerAnnouncementBanner` renders the results whose trigger
+visibility includes players (injury reveals, lair actions, dramatic notes)
+and filters out DM-only events.
 
 ### 4. Persistence: Zustand's `persist` middleware
 
@@ -257,17 +299,26 @@ When the DM clicks `Damage` with an amount `d` on a combatant with `maxHP m`:
 2. It gathers every enabled, in-scope massive-damage trigger whose threshold
    `t` satisfies `pct ≥ t` and whose dedupe window allows it, then fires
    **only the highest** — a 60% hit fires the 50% trigger, not the 25% one.
+   It also evaluates `hpBelow` (crossing-based: only fires when HP moves from
+   above the threshold to at/below it, and only the *lowest* threshold
+   crossing subsumes higher ones) and `hpReachedZero`.
 3. The combatant's HP is reduced and the trigger's id is recorded in
    `firedTriggers` / `firedTriggersRound` (per its `always` / `perTurn` /
    `perRound` cadence) so it cannot re-fire inside that window. Windows
    reset automatically on turn / round change.
-4. A `TriggerResult` is queued, which renders `<InjuryToast />` on the DM
-   panel; `hpReachedZero` and concentration events queue the same way.
+4. A `TriggerResult` is queued (with the trigger's `visibility` baked in),
+   which renders `<ResultToast />` on the DM panel (DM-visible results
+   only); player-visible ones render in `PlayerAnnouncementBanner` on the
+   player view. Concentration reminders queue the same way.
 5. The toast's `Roll` button evaluates the trigger's table dice expression
    (`rollExpression`) and looks up the matching range entry — twice for a
-   50% grievous wound, showing every individual roll. Rolled results also
-   flash on the player view.
-6. `Encounter ▾ → Reset injury triggers` clears both fired-trigger arrays
+   50% grievous wound, showing every individual roll.
+6. Non-roll actions (apply a condition, deal/heal HP) are applied via
+   `applySideEffects` **after** the main state change, and those changes
+   never re-evaluate triggers — a bleeding engine can't cascade into more
+   rolls. Round-level results (no combatant) apply to every in-scope
+   combatant.
+7. `Encounter ▾ → Reset injury triggers` clears both fired-trigger arrays
    for every combatant — useful after a long rest.
 
 ### 7. File layout
@@ -287,27 +338,28 @@ src/
 │   ├── migrate.ts        Bring old persisted saves up to the current schema
 │   ├── party.ts          Reusable PC roster import/export
 │   ├── playerClasses.ts  PC class icons
-│   └── presets.ts        Example scene + statblocks seeded on first run
+│   └── presets.ts        Example campaign + statblocks seeded on first run
 ├── utils/
 │   ├── dice.ts           rollExpression + matchTableEntry
 │   ├── hpStatus.ts       HP → word status + colour class
 │   ├── id.ts             Opaque ids for combatants / entries / tables
 │   ├── names.ts          Duplicate / bulk-add name collision helpers
+│   ├── order.ts          Lair-slot insertion in the initiative order
 │   └── statblock.ts      Javalent YAML + 5etools JSON → normalised statblock
 └── components/
     ├── Timer.tsx                  DM-side countdown with pause / reset
     ├── Hourglass.tsx              SVG hourglass used on player view
-    ├── InitiativeList.tsx         Renders the ordered list of cards
-    ├── CombatantCard.tsx          Expandable card: damage, heal, conditions, …
-    ├── AddCombatantModal.tsx      Add a PC / monster (with bulk quantity)
+    ├── InitiativeList.tsx         Ordered cards + lair slot + legendary windows
+    ├── CombatantCard.tsx           Expandable card: damage, heal, conditions, …
+    ├── AddCombatantModal.tsx       Add a PC / monster (bulk qty, legendary)
     ├── DiceRoller.tsx             Preset buttons + freeform expression
     ├── TablesPanel.tsx            List + editor for roll tables
-    ├── SettingsPanel.tsx          Triggers + strategy label management
-    ├── LibraryModal.tsx           Scenes, encounters, rosters & statblocks
+    ├── SettingsPanel.tsx          Triggers + lair action + strategy labels
+    ├── LibraryModal.tsx            Campaigns, sessions, snapshots & statblocks
     ├── StatblockView.tsx          Classic 5e-styled statblock renderer
-    ├── InjuryToast.tsx            DM toast when a trigger fires
-    ├── PlayerInjuryBanner.tsx     Player-side injury reveal
-    ├── EncounterMenu.tsx          New / Reset triggers / Import / Export / party
+    ├── ResultToast.tsx             DM toast when a trigger fires
+    ├── PlayerAnnouncementBanner.tsx  Player-side reveals (injuries, lair, notes)
+    ├── EncounterMenu.tsx          New / Reset triggers / Import / Export / log / party
     └── HelpModal.tsx              Keyboard shortcuts + walkthrough
 ```
 

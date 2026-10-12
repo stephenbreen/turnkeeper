@@ -19,6 +19,8 @@ const pc = (name: string, patch: Partial<Combatant> = {}): Combatant => ({
   notes: 'secret DM note',
   nameVisibleToPlayers: true,
   isDead: false,
+  legendaryActions: 0,
+  legendaryUsed: 0,
   firedTriggers: [],
   firedTriggersRound: [],
   ...patch,

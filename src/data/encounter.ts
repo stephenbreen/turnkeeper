@@ -26,6 +26,8 @@ function makeCombatant(
     notes: '',
     nameVisibleToPlayers: entry.nameVisibleToPlayers ?? entry.type === 'pc',
     isDead: false,
+    legendaryActions: entry.legendaryActions ?? 0,
+    legendaryUsed: 0,
     firedTriggers: [],
     firedTriggersRound: [],
     playerClass: entry.playerClass,
@@ -76,4 +78,5 @@ export const blankRosterEntry = (): RosterEntry => ({
   initiative: 10,
   initiativeMod: 0,
   nameVisibleToPlayers: false,
+  legendaryActions: 0,
 })

@@ -22,6 +22,7 @@ export default function CombatantCard({
   const update = useStore((s) => s.updateCombatant)
   const remove = useStore((s) => s.removeCombatant)
   const duplicate = useStore((s) => s.duplicateCombatant)
+  const spendLegendary = useStore((s) => s.spendLegendaryAction)
   const damage = useStore((s) => s.applyDamage)
   const heal = useStore((s) => s.applyHeal)
   const toggleCondition = useStore((s) => s.toggleCondition)
@@ -252,6 +253,14 @@ export default function CombatantCard({
               )}
             </span>
             <span className="text-[11px] text-slate-500 whitespace-nowrap">AC {c.AC}</span>
+            {c.legendaryActions > 0 && (
+              <span
+                className="text-[11px] text-indigo-300 whitespace-nowrap"
+                title={`Legendary actions: ${c.legendaryActions - c.legendaryUsed} of ${c.legendaryActions} remaining this round (uses return at the start of its turn)`}
+              >
+                ⚡ {c.legendaryActions - c.legendaryUsed}/{c.legendaryActions}
+              </span>
+            )}
             <span className="hidden sm:inline text-[11px] text-slate-500 whitespace-nowrap">
               PP {c.passivePerception}
             </span>
@@ -682,6 +691,17 @@ export default function CombatantCard({
               Dead
             </label>
             <div className="flex gap-2 w-full sm:w-auto sm:ml-auto">
+              {c.legendaryActions > 0 && (
+                <button
+                  onClick={() => spendLegendary(c.id)}
+                  className="btn"
+                  disabled={c.legendaryActions <= c.legendaryUsed}
+                  title="Spend one legendary action (uses return at the start of this creature's own turn)"
+                >
+                  ⚡ Legendary ({c.legendaryActions - c.legendaryUsed}/
+                  {c.legendaryActions})
+                </button>
+              )}
               <button
                 onClick={() => duplicate(c.id)}
                 className="btn"

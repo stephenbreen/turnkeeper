@@ -2,25 +2,46 @@ import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import type {
   ActiveCondition,
+  Campaign,
   Combatant,
   CombatantType,
   EncounterState,
   EncounterTemplate,
+  LairActionConfig,
+  LogEntry,
   RollTable,
   RosterEntry,
-  Scene,
+  Session,
+  SessionSnapshot,
   Statblock,
   Trigger,
+  TriggerAction,
   TriggerResult,
   TriggerRoll,
   TriggerScope,
 } from './types'
+import { CONDITIONS } from './data/conditions'
 import { buildDefaultEncounter } from './data/defaultState'
 import { expandRoster } from './data/encounter'
 import { migratePersisted } from './data/migrate'
 import { newId } from './utils/id'
 import { nextName } from './utils/names'
 import { rollExpression, matchTableEntry } from './utils/dice'
+
+// ---------- Event log ----------
+
+// DM-only fight history, capped so localStorage can't grow unbounded. Old
+// entries are dropped from the front; the export writes whatever remains.
+const LOG_CAP = 1000
+
+const logAdd = (
+  s: EncounterState,
+  ...entries: Omit<LogEntry, 'id' | 't'>[]
+): LogEntry[] => {
+  const stamped = entries.map((e) => ({ ...e, id: newId(), t: Date.now() }))
+  const log = [...s.eventLog, ...stamped]
+  return log.length > LOG_CAP ? log.slice(log.length - LOG_CAP) : log
+}
 
 // ---------- Trigger engine helpers ----------
 
@@ -43,7 +64,8 @@ const triggerEligible = (t: Trigger, c: Combatant): boolean => {
 
 // Build a pending TriggerResult for a fired trigger. Rolls are NOT performed
 // here — the DM (or a player) rolls via the toast, matching the existing
-// "players roll the die physically" flow.
+// "players roll the die physically" flow. Non-roll actions render via
+// notifyText so the toast can describe what to apply.
 function buildResult(
   trigger: Trigger,
   combatant: Combatant | null,
@@ -62,20 +84,32 @@ function buildResult(
     tableName = table?.name ?? null
     dice = table?.dice ?? null
     rollsRequested = Math.max(1, action.rolls)
-  } else {
+  } else if (action.kind === 'notify') {
     notifyText = action.text
+  } else if (action.kind === 'applyCondition') {
+    const name = CONDITIONS.find((c) => c.id === action.conditionId)?.name ?? action.conditionId
+    notifyText = `Apply ${name}${
+      action.rounds != null ? ` for ${action.rounds} round${action.rounds === 1 ? '' : 's'}` : ''
+    }${action.saveEnds ? ' (save ends)' : ''}`
+  } else if (action.kind === 'damage') {
+    notifyText = `Automatic damage: ${action.amount}`
+  } else {
+    notifyText = `Automatic healing: ${action.amount}`
   }
   return {
     id: newId(),
     triggerId: trigger.id,
     triggerName: trigger.name,
     eventKind: trigger.event.kind,
+    visibility: trigger.visibility,
     combatantId: combatant?.id ?? null,
     combatantName: combatant?.name ?? '',
     damage: ctx.damage,
     pct: ctx.pct,
     percentThreshold:
-      trigger.event.kind === 'massiveDamage' ? trigger.event.percentOfMax : undefined,
+      trigger.event.kind === 'massiveDamage' || trigger.event.kind === 'hpBelow'
+        ? trigger.event.percentOfMax
+        : undefined,
     tableId,
     tableName,
     dice,
@@ -122,13 +156,21 @@ type Actions = {
   rollTriggerResult: (resultId: string) => void
   dismissTriggerResult: (resultId: string) => void
   clearTriggerResults: () => void
-  // Prep library
-  addScene: () => string
-  updateScene: (id: string, patch: Partial<Scene>) => void
-  removeScene: (id: string) => void
-  importScene: (raw: unknown) => void
-  loadEncounter: (sceneId: string, encounterId: string) => void
-  saveCurrentAsEncounter: (sceneId: string, name: string) => void
+  // Lair & legendary actions
+  setLairAction: (config: LairActionConfig | null) => void
+  spendLegendaryAction: (id: string) => void
+  // Campaign manager
+  addCampaign: () => string
+  updateCampaign: (id: string, patch: Partial<Campaign>) => void
+  removeCampaign: (id: string) => void
+  addSession: (campaignId: string) => string
+  updateSession: (sessionId: string, patch: Partial<Session>) => void
+  removeSession: (sessionId: string) => void
+  importSession: (raw: unknown) => void
+  loadEncounter: (sessionId: string, encounterId: string) => void
+  saveCurrentAsEncounter: (sessionId: string, name: string) => void
+  saveSessionSnapshot: (sessionId: string) => void
+  loadSessionSnapshot: (sessionId: string) => void
   addStatblocks: (statblocks: Statblock[]) => void
   updateStatblock: (id: string, patch: Partial<Statblock>) => void
   removeStatblock: (id: string) => void
@@ -136,7 +178,8 @@ type Actions = {
 
 export type Store = EncounterState & Actions
 
-// Durable fields written to localStorage.
+// Durable fields written to localStorage. `eventLog` is DM-only history —
+// persisted but never synced.
 const PERSIST_KEYS = [
   'combatants',
   'currentCombatantId',
@@ -147,13 +190,17 @@ const PERSIST_KEYS = [
   'triggers',
   'strategyLabelNames',
   'tables',
-  'scenes',
+  'campaigns',
   'statblocks',
+  'lairAction',
+  'lairFiredRound',
+  'eventLog',
 ] as const
 
-// Fields broadcast to the player window. Note: `scenes` and `statblocks` are
-// DM-only prep material and are deliberately NOT synced (keeps monster stats off
-// the player screen entirely); `triggerResults` is synced but not persisted.
+// Fields broadcast to the player window. Note: `campaigns` and `statblocks`
+// are DM-only prep material and are deliberately NOT synced (keeps monster
+// stats and planning notes off the player screen entirely); `triggerResults`
+// is synced but not persisted; `eventLog` is DM-only.
 const SYNC_KEYS = [
   'combatants',
   'currentCombatantId',
@@ -165,6 +212,8 @@ const SYNC_KEYS = [
   'strategyLabelNames',
   'tables',
   'triggerResults',
+  'lairAction',
+  'lairFiredRound',
 ] as const
 
 function pick<K extends keyof EncounterState>(
@@ -200,6 +249,8 @@ function buildCombatant(c: Partial<Combatant>): Combatant {
     notes: c.notes ?? '',
     nameVisibleToPlayers: c.nameVisibleToPlayers ?? c.type === 'pc',
     isDead: false,
+    legendaryActions: c.legendaryActions ?? 0,
+    legendaryUsed: 0,
     firedTriggers: [],
     firedTriggersRound: [],
     playerClass: c.playerClass,
@@ -212,12 +263,28 @@ function buildCombatant(c: Partial<Combatant>): Combatant {
 // counter) at the end of the list. perTurn fired-trigger lists reset on every
 // turn change; perRound ones only when the round number changes. Timed
 // conditions tick down for the combatant whose turn is starting.
-function advanceTurn(s: EncounterState): Partial<EncounterState> {
+//
+// Also the engine for turn/round events:
+//   - `turnStart` triggers fire for the combatant whose turn is beginning.
+//   - `roundStart` triggers fire when the round number changes.
+//   - A lair reminder fires when the order passes the configured initiative
+//     count (once per round, tracked via lairFiredRound).
+//   - The starter's legendary-action pool resets (uses return at the start
+//     of its own turn).
+//
+// Returns the state partial plus the fired results so the caller can apply
+// trigger side-effects (applyCondition / damage / heal) after committing.
+function advanceTurn(
+  s: EncounterState
+): { partial: Partial<EncounterState>; fired: TriggerResult[] } {
   if (s.combatants.length === 0) {
     return {
-      currentCombatantId: null,
-      timerRemaining: s.timerSeconds,
-      timerRunning: false,
+      partial: {
+        currentCombatantId: null,
+        timerRemaining: s.timerSeconds,
+        timerRunning: false,
+      },
+      fired: [],
     }
   }
   const curIdx = s.combatants.findIndex((c) => c.id === s.currentCombatantId)
@@ -227,17 +294,117 @@ function advanceTurn(s: EncounterState): Partial<EncounterState> {
   const round = curIdx >= 0 && starting === 0 ? s.round + 1 : s.round
   const roundChanged = round !== s.round
   const startingId = s.combatants[starting].id
+  const firedTriggersTurn: string[] = []
+  const firedTriggersRoundList: string[] = []
+  const fired: TriggerResult[] = []
+
+  let combatants: Combatant[] = s.combatants.map((c) => ({
+    ...c,
+    firedTriggers: [],
+    firedTriggersRound: roundChanged ? [] : c.firedTriggersRound,
+    conditions: c.id === startingId ? tickConditions(c.conditions) : c.conditions,
+    // Legendary uses return at the start of the creature's own turn.
+    legendaryUsed: c.id === startingId ? 0 : c.legendaryUsed,
+  }))
+  const starter = combatants[starting]
+
+  // turnStart triggers — scoped to the combatant whose turn begins. perTurn /
+  // perRound dedupe records against the starter like any other event.
+  for (const t of s.triggers) {
+    if (
+      t.enabled &&
+      t.event.kind === 'turnStart' &&
+      scopeMatches(t.scope, starter.type) &&
+      triggerEligible(t, starter)
+    ) {
+      if (t.dedupe === 'perTurn') firedTriggersTurn.push(t.id)
+      else if (t.dedupe === 'perRound') firedTriggersRoundList.push(t.id)
+      fired.push(buildResult(t, starter, s.tables, {}))
+    }
+  }
+
+  // roundStart triggers — round-level, no combatant. `round: 0` = every round.
+  if (roundChanged) {
+    for (const t of s.triggers) {
+      if (
+        t.enabled &&
+        t.event.kind === 'roundStart' &&
+        (t.event.round === 0 || t.event.round === round)
+      ) {
+        fired.push(buildResult(t, null, s.tables, {}))
+      }
+    }
+  }
+
+  // Lair action reminder: fires when the order crosses the configured count
+  // going downward (or on wrap when every combatant sits above it — count 20
+  // then falls after the whole round), once per round. The DM acts on the
+  // reminder; nothing is applied automatically.
+  let lairFiredRound = s.lairFiredRound
+  const lair = s.lairAction
+  if (lair && lairFiredRound !== round) {
+    const prevInit =
+      roundChanged || curIdx < 0 ? Infinity : s.combatants[curIdx].initiative
+    const nextInit = starter.initiative
+    const allAbove = s.combatants.every((c) => c.initiative > lair.initiative)
+    const crossed = prevInit > lair.initiative && nextInit <= lair.initiative
+    if (crossed || (roundChanged && allAbove)) {
+      lairFiredRound = round
+      fired.push({
+        id: newId(),
+        triggerId: 'lair',
+        triggerName: lair.name || 'Lair Action',
+        eventKind: 'lair',
+        visibility: 'both',
+        combatantId: null,
+        combatantName: '',
+        tableId: null,
+        tableName: null,
+        dice: null,
+        rollsRequested: 0,
+        rolls: [],
+        notifyText: `The lair acts now (initiative ${lair.initiative}).`,
+      })
+    }
+  }
+
+  // Fold dedupe records into the starter's entry.
+  if (firedTriggersTurn.length || firedTriggersRoundList.length) {
+    combatants = combatants.map((c) =>
+      c.id === startingId
+        ? {
+            ...c,
+            firedTriggers: [...c.firedTriggers, ...firedTriggersTurn],
+            firedTriggersRound: [...c.firedTriggersRound, ...firedTriggersRoundList],
+          }
+        : c
+    )
+  }
+
+  const log: Omit<LogEntry, 'id' | 't'>[] = [
+    { kind: 'turnStart', name: starter.name, value: round },
+  ]
+  if (roundChanged) log.push({ kind: 'roundStart', name: `Round ${round}` })
+  for (const r of fired) {
+    log.push({
+      kind: r.eventKind === 'lair' ? 'lairAction' : 'triggerFired',
+      name: r.triggerName,
+      text: r.combatantName || undefined,
+    })
+  }
+
   return {
-    currentCombatantId: startingId,
-    round,
-    timerRemaining: s.timerSeconds,
-    timerRunning: false,
-    combatants: s.combatants.map((c) => ({
-      ...c,
-      firedTriggers: [],
-      firedTriggersRound: roundChanged ? [] : c.firedTriggersRound,
-      conditions: c.id === startingId ? tickConditions(c.conditions) : c.conditions,
-    })),
+    partial: {
+      currentCombatantId: startingId,
+      round,
+      timerRemaining: s.timerSeconds,
+      timerRunning: false,
+      combatants,
+      lairFiredRound,
+      triggerResults: fired.length ? [...s.triggerResults, ...fired] : s.triggerResults,
+      eventLog: logAdd(s, ...log),
+    },
+    fired,
   }
 }
 
@@ -254,44 +421,121 @@ try {
 
 export const useStore = create<Store>()(
   persist(
-    (set, get) => ({
-      ...buildDefaultEncounter(),
-
-      addCombatant: (c) =>
+    (set, get) => {
+      // Apply non-roll trigger actions (applyCondition / damage / heal) after
+      // the main state change. Per-combatant events hit the combatant that
+      // fired; round-level events hit every in-scope combatant ("the lair
+      // floods: everyone takes 5"). Trigger-caused changes are logged but
+      // never re-evaluate triggers — a bleeding trigger can't cascade into
+      // more rolls or conditions.
+      const applySideEffects = (results: TriggerResult[]) => {
+        if (!results.length) return
         set((s) => {
-          const newCombatant = buildCombatant(c)
-          // Fire any "when a combatant is added" triggers (e.g. roll on a
-          // random-encounter / reinforcements table).
-          const results: TriggerResult[] = []
-          for (const t of s.triggers) {
-            if (
-              t.enabled &&
-              t.event.kind === 'combatantAdded' &&
-              scopeMatches(t.scope, newCombatant.type)
-            ) {
-              results.push(buildResult(t, newCombatant, s.tables, {}))
+          const entries: Omit<LogEntry, 'id' | 't'>[] = []
+          let combatants = s.combatants
+
+          const mutate = (
+            c: Combatant,
+            a: Extract<TriggerAction, { kind: 'applyCondition' | 'damage' | 'heal' }>
+          ): Combatant => {
+            if (a.kind === 'applyCondition') {
+              if (c.conditions.some((x) => x.id === a.conditionId)) return c
+              entries.push({ kind: 'conditionAdd', name: c.name, text: a.conditionId })
+              return {
+                ...c,
+                conditions: [
+                  ...c.conditions,
+                  { id: a.conditionId, rounds: a.rounds, saveEnds: a.saveEnds },
+                ],
+              }
+            }
+            if (a.kind === 'damage') {
+              // Same absorption rules as manual damage: temp HP soaks first.
+              const absorbed = Math.min(c.tempHP, a.amount)
+              entries.push({ kind: 'damage', name: c.name, value: a.amount, text: 'trigger' })
+              return {
+                ...c,
+                currentHP: Math.max(0, c.currentHP - (a.amount - absorbed)),
+                tempHP: c.tempHP - absorbed,
+              }
+            }
+            const newHP = Math.min(c.maxHP, c.currentHP + a.amount)
+            const revived = newHP > 0
+            entries.push({ kind: 'heal', name: c.name, value: a.amount, text: 'trigger' })
+            return {
+              ...c,
+              currentHP: newHP,
+              isDead: revived ? false : c.isDead,
+              deathSaves: revived ? { successes: 0, failures: 0 } : c.deathSaves,
             }
           }
-          return {
-            combatants: sortByInit([...s.combatants, newCombatant]),
-            // First combatant added becomes current, matching the old
-            // index-0 behaviour; later adds never move the marker.
-            currentCombatantId: s.currentCombatantId ?? newCombatant.id,
-            triggerResults: results.length
-              ? [...s.triggerResults, ...results]
-              : s.triggerResults,
+
+          for (const r of results) {
+            const t = s.triggers.find((x) => x.id === r.triggerId)
+            const a = t?.action
+            if (!t || !a || a.kind === 'rollTable' || a.kind === 'notify') continue
+            const targetIds = r.combatantId
+              ? [r.combatantId]
+              : t.event.kind === 'roundStart'
+                ? s.combatants.filter((c) => scopeMatches(t.scope, c.type)).map((c) => c.id)
+                : []
+            for (const tid of targetIds) {
+              combatants = combatants.map((c) => (c.id === tid ? mutate(c, a) : c))
+            }
           }
-        }),
+          if (combatants === s.combatants && !entries.length) return {}
+          return {
+            combatants,
+            eventLog: logAdd(s, ...entries),
+          }
+        })
+      }
+
+      return {
+      ...buildDefaultEncounter(),
+
+      addCombatant: (c) => {
+        const newCombatant = buildCombatant(c)
+        const s = get()
+        // Fire any "when a combatant is added" triggers (e.g. roll on a
+        // random-encounter / reinforcements table).
+        const results: TriggerResult[] = []
+        for (const t of s.triggers) {
+          if (
+            t.enabled &&
+            t.event.kind === 'combatantAdded' &&
+            scopeMatches(t.scope, newCombatant.type)
+          ) {
+            results.push(buildResult(t, newCombatant, s.tables, {}))
+          }
+        }
+        set({
+          combatants: sortByInit([...s.combatants, newCombatant]),
+          // First combatant added becomes current, matching the old
+          // index-0 behaviour; later adds never move the marker.
+          currentCombatantId: s.currentCombatantId ?? newCombatant.id,
+          triggerResults: results.length
+            ? [...s.triggerResults, ...results]
+            : s.triggerResults,
+          eventLog: logAdd(s, { kind: 'combatantAdd', name: newCombatant.name }),
+        })
+        applySideEffects(results)
+      },
 
       // Append several combatants at once (e.g. importing a saved party).
       // Deliberately does NOT fire `combatantAdded` triggers — a bulk party
       // import shouldn't roll a reinforcements table once per player.
       addCombatants: (list) =>
         set((s) => {
-          const combatants = sortByInit([...s.combatants, ...list.map(buildCombatant)])
+          const built = list.map(buildCombatant)
+          const combatants = sortByInit([...s.combatants, ...built])
           return {
             combatants,
             currentCombatantId: s.currentCombatantId ?? combatants[0]?.id ?? null,
+            eventLog: logAdd(
+              s,
+              ...built.map((b) => ({ kind: 'combatantAdd' as const, name: b.name }))
+            ),
           }
         }),
 
@@ -313,10 +557,16 @@ export const useStore = create<Store>()(
             statblockId: c.statblockId,
             nameVisibleToPlayers: c.nameVisibleToPlayers,
             notes: c.notes,
+            legendaryActions: c.legendaryActions,
           })
           return {
             combatants: sortByInit([...s.combatants, copy]),
             currentCombatantId: s.currentCombatantId ?? copy.id,
+            eventLog: logAdd(s, {
+              kind: 'combatantAdd',
+              name: copy.name,
+              text: 'duplicate',
+            }),
           }
         }),
 
@@ -331,6 +581,7 @@ export const useStore = create<Store>()(
         set((s) => {
           const idx = s.combatants.findIndex((c) => c.id === id)
           if (idx < 0) return {}
+          const removed = s.combatants[idx]
           const combatants = s.combatants.filter((c) => c.id !== id)
           let currentCombatantId = s.currentCombatantId
           if (s.currentCombatantId === id) {
@@ -340,7 +591,11 @@ export const useStore = create<Store>()(
             currentCombatantId =
               combatants[Math.min(idx, combatants.length - 1)]?.id ?? null
           }
-          return { combatants, currentCombatantId }
+          return {
+            combatants,
+            currentCombatantId,
+            eventLog: logAdd(s, { kind: 'combatantRemove', name: removed.name }),
+          }
         }),
 
       applyDamage: (id, amount) => {
@@ -387,6 +642,35 @@ export const useStore = create<Store>()(
           newResults.push(buildResult(massive[0], c, s.tables, { damage: amount, pct }))
         }
 
+        // hpBelow triggers: crossing-based HP state thresholds (bloodied at
+        // 50%, phase changes, "last legs" warnings). Mirrors massive damage's
+        // "most severe wins" rule but inverted: the LOWEST threshold crossed
+        // fires, since dropping to 10% subsumes crossing 50%. Healing back
+        // above a threshold re-arms it.
+        const prevPct = (prevHP / Math.max(1, c.maxHP)) * 100
+        const newPct = (newHP / Math.max(1, c.maxHP)) * 100
+        const below = s.triggers
+          .filter(
+            (t) =>
+              t.enabled &&
+              t.event.kind === 'hpBelow' &&
+              scopeMatches(t.scope, c.type) &&
+              (t.event as { percentOfMax: number }).percentOfMax < prevPct &&
+              (t.event as { percentOfMax: number }).percentOfMax >= newPct &&
+              triggerEligible(t, c)
+          )
+          .sort(
+            (a, b) =>
+              (a.event as { percentOfMax: number }).percentOfMax -
+              (b.event as { percentOfMax: number }).percentOfMax
+          )
+        if (below.length > 0) {
+          record(below[0])
+          newResults.push(
+            buildResult(below[0], c, s.tables, { damage: amount, pct: newPct })
+          )
+        }
+
         // HP-reached-zero triggers: fire when this hit drops the combatant from
         // above 0 to 0 or below.
         if (prevHP > 0 && newHP <= 0) {
@@ -413,6 +697,7 @@ export const useStore = create<Store>()(
             triggerId: 'concentration',
             triggerName: 'Concentration',
             eventKind: 'concentration',
+            visibility: 'dm',
             combatantId: c.id,
             combatantName: c.name,
             damage: amount,
@@ -430,6 +715,15 @@ export const useStore = create<Store>()(
           })
           concentrationCleared = lost
         }
+
+        const log: Omit<LogEntry, 'id' | 't'>[] = [
+          { kind: 'damage', name: c.name, value: amount },
+          ...newResults.map((r) => ({
+            kind: 'triggerFired' as const,
+            name: r.triggerName,
+            text: c.name,
+          })),
+        ]
 
         set({
           combatants: s.combatants.map((x) =>
@@ -451,7 +745,10 @@ export const useStore = create<Store>()(
           triggerResults: newResults.length
             ? [...s.triggerResults, ...newResults]
             : s.triggerResults,
+          eventLog: logAdd(s, ...log),
         })
+
+        applySideEffects(newResults)
       },
 
       applyHeal: (id, amount) => {
@@ -469,24 +766,40 @@ export const useStore = create<Store>()(
               deathSaves: revived ? { successes: 0, failures: 0 } : c.deathSaves,
             }
           }),
+          eventLog: logAdd(s, {
+            kind: 'heal',
+            name: s.combatants.find((c) => c.id === id)?.name ?? '',
+            value: amount,
+          }),
         }))
       },
 
       // Set a death-save count (0–3). Three failures marks the PC dead.
       recordDeathSave: (id, kind, value) =>
-        set((s) => ({
-          combatants: s.combatants.map((c) => {
+        set((s) => {
+          const name = s.combatants.find((c) => c.id === id)?.name ?? ''
+          const entries: Omit<LogEntry, 'id' | 't'>[] = [
+            { kind: 'deathSave', name, text: kind, value },
+          ]
+          const combatants = s.combatants.map((c) => {
             if (c.id !== id) return c
             const deathSaves = { ...c.deathSaves, [kind]: Math.max(0, Math.min(3, value)) }
+            // A separate entry for the death itself so replay can tell the
+            // third failure apart from the running tally.
+            if (deathSaves.failures >= 3 && c.deathSaves.failures < 3)
+              entries.push({ kind: 'died', name, text: 'third death-save failure' })
             return { ...c, deathSaves, isDead: deathSaves.failures >= 3 ? true : c.isDead }
-          }),
-        })),
-
-      nextTurn: () =>
-        set((s) => {
-          if (s.combatants.length === 0) return s
-          return advanceTurn(s)
+          })
+          return { combatants, eventLog: logAdd(s, ...entries) }
         }),
+
+      nextTurn: () => {
+        const s = get()
+        if (s.combatants.length === 0) return
+        const { partial, fired } = advanceTurn(s)
+        set(partial)
+        applySideEffects(fired)
+      },
 
       previousTurn: () =>
         set((s) => {
@@ -509,19 +822,64 @@ export const useStore = create<Store>()(
           }
         }),
 
-      toggleCondition: (id, conditionId) =>
-        set((s) => ({
-          combatants: s.combatants.map((c) =>
-            c.id === id
+      toggleCondition: (id, conditionId) => {
+        const s = get()
+        const c = s.combatants.find((x) => x.id === id)
+        if (!c) return
+        const has = c.conditions.some((x) => x.id === conditionId)
+        // Fire "condition gained" triggers when a condition is applied
+        // (removal is not an event). Trigger-applied conditions deliberately
+        // don't re-enter here — applySideEffects never re-evaluates triggers.
+        const results: TriggerResult[] = []
+        const firedTurn: string[] = []
+        const firedRound: string[] = []
+        if (!has) {
+          for (const t of s.triggers) {
+            if (
+              t.enabled &&
+              t.event.kind === 'conditionGained' &&
+              t.event.conditionId === conditionId &&
+              scopeMatches(t.scope, c.type) &&
+              triggerEligible(t, c)
+            ) {
+              if (t.dedupe === 'perTurn') firedTurn.push(t.id)
+              else if (t.dedupe === 'perRound') firedRound.push(t.id)
+              results.push(buildResult(t, c, s.tables, {}))
+            }
+          }
+        }
+        set({
+          combatants: s.combatants.map((x) =>
+            x.id === id
               ? {
-                  ...c,
-                  conditions: c.conditions.some((x) => x.id === conditionId)
-                    ? c.conditions.filter((x) => x.id !== conditionId)
-                    : [...c.conditions, { id: conditionId, rounds: null, saveEnds: false }],
+                  ...x,
+                  conditions: has
+                    ? x.conditions.filter((cond) => cond.id !== conditionId)
+                    : [...x.conditions, { id: conditionId, rounds: null, saveEnds: false }],
+                  firedTriggers: firedTurn.length
+                    ? [...x.firedTriggers, ...firedTurn]
+                    : x.firedTriggers,
+                  firedTriggersRound: firedRound.length
+                    ? [...x.firedTriggersRound, ...firedRound]
+                    : x.firedTriggersRound,
                 }
-              : c
+              : x
           ),
-        })),
+          triggerResults: results.length
+            ? [...s.triggerResults, ...results]
+            : s.triggerResults,
+          eventLog: logAdd(
+            s,
+            { kind: has ? 'conditionRemove' : 'conditionAdd', name: c.name, text: conditionId },
+            ...results.map((r) => ({
+              kind: 'triggerFired' as const,
+              name: r.triggerName,
+              text: c.name,
+            }))
+          ),
+        })
+        if (results.length) applySideEffects(results)
+      },
 
       setCondition: (id, conditionId, patch) =>
         set((s) => ({
@@ -573,19 +931,22 @@ export const useStore = create<Store>()(
 
       setTimerRunning: (running) => set({ timerRunning: running }),
 
-      tickTimer: () =>
-        set((s) => {
-          if (!s.timerRunning) return s
-          const remaining = s.timerRemaining - 1
-          if (remaining <= 0) {
-            if (s.combatants.length === 0) {
-              return { timerRemaining: s.timerSeconds, timerRunning: false }
-            }
-            // Auto-advance uses the exact same path as the Next button.
-            return advanceTurn(s)
-          }
-          return { timerRemaining: remaining }
-        }),
+      tickTimer: () => {
+        const s = get()
+        if (!s.timerRunning) return
+        if (s.timerRemaining - 1 > 0) {
+          set({ timerRemaining: s.timerRemaining - 1 })
+          return
+        }
+        if (s.combatants.length === 0) {
+          set({ timerRemaining: s.timerSeconds, timerRunning: false })
+          return
+        }
+        // Auto-advance uses the exact same path as the Next button.
+        const { partial, fired } = advanceTurn(s)
+        set(partial)
+        applySideEffects(fired)
+      },
 
       resetTimer: () =>
         set((s) => ({ timerRemaining: s.timerSeconds, timerRunning: false })),
@@ -603,10 +964,17 @@ export const useStore = create<Store>()(
             tables: s.tables,
             triggers: s.triggers,
             strategyLabelNames: s.strategyLabelNames,
-            scenes: s.scenes,
+            campaigns: s.campaigns,
             statblocks: s.statblocks,
+            lairAction: s.lairAction,
             timerSeconds: s.timerSeconds,
             timerRemaining: s.timerSeconds,
+            // The old fight's history is discarded with the board — export
+            // the log first if you want to keep it. A marker entry records
+            // that a reset happened so resumed logs stay readable.
+            eventLog: [
+              { id: newId(), t: Date.now(), kind: 'encounterReset', name: 'Encounter reset' },
+            ],
           }
         }),
 
@@ -695,49 +1063,99 @@ export const useStore = create<Store>()(
 
       clearTriggerResults: () => set({ triggerResults: [] }),
 
-      // ---------- Prep library ----------
-      // Scenes hold a nested encounters → roster tree. Nested edits are done by
-      // the UI computing new sub-arrays and passing them to updateScene, which
-      // keeps the store surface small.
+      // ---------- Campaign manager ----------
+      // Campaigns hold sessions; sessions hold encounters and an optional
+      // mid-fight snapshot. Nested edits are done by the UI computing new
+      // sub-arrays and passing them to updateSession/updateCampaign, which
+      // keeps the store surface small. Session lookups search all campaigns —
+      // ids are globally unique (newId everywhere), so this stays O(small).
 
-      addScene: () => {
+      addCampaign: () => {
         const id = newId()
-        const scene: Scene = { id, name: 'New Scene', encounters: [] }
-        set((s) => ({ scenes: [...s.scenes, scene] }))
+        const campaign: Campaign = { id, name: 'New Campaign', notes: '', sessions: [] }
+        set((s) => ({ campaigns: [...s.campaigns, campaign] }))
         return id
       },
 
-      updateScene: (id, patch) =>
+      updateCampaign: (id, patch) =>
         set((s) => ({
-          scenes: s.scenes.map((sc) => (sc.id === id ? { ...sc, ...patch } : sc)),
+          campaigns: s.campaigns.map((c) => (c.id === id ? { ...c, ...patch } : c)),
         })),
 
-      removeScene: (id) =>
-        set((s) => ({ scenes: s.scenes.filter((sc) => sc.id !== id) })),
+      removeCampaign: (id) =>
+        set((s) => ({ campaigns: s.campaigns.filter((c) => c.id !== id) })),
 
-      importScene: (raw) =>
+      addSession: (campaignId) => {
+        const id = newId()
+        set((s) => ({
+          campaigns: s.campaigns.map((c) =>
+            c.id === campaignId
+              ? {
+                  ...c,
+                  sessions: [...c.sessions, { id, name: 'New Session', encounters: [] }],
+                }
+              : c
+          ),
+        }))
+        return id
+      },
+
+      updateSession: (sessionId, patch) =>
+        set((s) => ({
+          campaigns: s.campaigns.map((c) => ({
+            ...c,
+            sessions: c.sessions.map((x) => (x.id === sessionId ? { ...x, ...patch } : x)),
+          })),
+        })),
+
+      removeSession: (sessionId) =>
+        set((s) => ({
+          campaigns: s.campaigns.map((c) => ({
+            ...c,
+            sessions: c.sessions.filter((x) => x.id !== sessionId),
+          })),
+        })),
+
+      // Accepts a session payload (or a legacy pre-rename scene), optionally
+      // wrapped as { session | scene, statblocks }. Fresh session id avoids
+      // collisions; nested/statblock ids are kept so roster → statblock
+      // links survive.
+      importSession: (raw) =>
         set((s) => {
-          const data = (raw ?? {}) as { scene?: Scene; statblocks?: Statblock[] } & Partial<Scene>
-          const incoming = (data.scene ?? data) as Scene
+          const data = (raw ?? {}) as {
+            session?: Session
+            scene?: Session
+            statblocks?: Statblock[]
+          } & Partial<Session>
+          const incoming = (data.session ?? data.scene ?? data) as Session
           if (!incoming || typeof incoming !== 'object' || !Array.isArray(incoming.encounters)) {
             return s
           }
-          // Fresh scene id avoids collisions; keep nested/statblock ids so roster
-          // → statblock links survive.
-          const scene: Scene = { ...incoming, id: newId() }
+          const session: Session = { ...incoming, id: newId() }
           const incomingSbs = Array.isArray(data.statblocks) ? data.statblocks : []
           const known = new Set(s.statblocks.map((x) => x.id))
           const addSbs = incomingSbs.filter((x) => x && x.id && !known.has(x.id))
+          // Import lands in the first campaign; create one if this is the
+          // first import on a fresh install.
+          let campaigns = s.campaigns
+          if (campaigns.length === 0) {
+            campaigns = [{ id: newId(), name: 'My Campaign', notes: '', sessions: [] }]
+          }
+          campaigns = campaigns.map((c, i) =>
+            i === 0 ? { ...c, sessions: [...c.sessions, session] } : c
+          )
           return {
-            scenes: [...s.scenes, scene],
+            campaigns,
             statblocks: [...s.statblocks, ...addSbs],
           }
         }),
 
-      loadEncounter: (sceneId, encounterId) =>
+      loadEncounter: (sessionId, encounterId) =>
         set((s) => {
-          const scene = s.scenes.find((x) => x.id === sceneId)
-          const enc = scene?.encounters.find((e) => e.id === encounterId)
+          const enc = s.campaigns
+            .flatMap((c) => c.sessions)
+            .find((x) => x.id === sessionId)
+            ?.encounters.find((e) => e.id === encounterId)
           if (!enc) return s
           const combatants = sortByInit(expandRoster(enc.roster))
           return {
@@ -749,10 +1167,11 @@ export const useStore = create<Store>()(
             timerRemaining: s.timerSeconds,
             timerRunning: false,
             triggerResults: [],
+            eventLog: logAdd(s, { kind: 'encounterLoad', name: enc.name }),
           }
         }),
 
-      saveCurrentAsEncounter: (sceneId, name) =>
+      saveCurrentAsEncounter: (sessionId, name) =>
         set((s) => {
           const roster: RosterEntry[] = s.combatants.map((c) => ({
             id: newId(),
@@ -768,6 +1187,7 @@ export const useStore = create<Store>()(
             nameVisibleToPlayers: c.nameVisibleToPlayers,
             statblockId: c.statblockId,
             playerClass: c.playerClass,
+            legendaryActions: c.legendaryActions,
           }))
           const encounter: EncounterTemplate = {
             id: newId(),
@@ -775,11 +1195,93 @@ export const useStore = create<Store>()(
             roster,
           }
           return {
-            scenes: s.scenes.map((sc) =>
-              sc.id === sceneId
-                ? { ...sc, encounters: [...sc.encounters, encounter] }
-                : sc
+            campaigns: s.campaigns.map((c) => ({
+              ...c,
+              sessions: c.sessions.map((x) =>
+                x.id === sessionId ? { ...x, encounters: [...x.encounters, encounter] } : x
+              ),
+            })),
+          }
+        }),
+
+      // Save the live board mid-fight into a session so the game can be
+      // resumed exactly where it left off — HP, conditions, death saves,
+      // round, turn marker and the fight log. Rules (triggers / tables /
+      // labels) are deliberately NOT snapshotted; they stay live so tweaks
+      // between sessions apply on resume.
+      saveSessionSnapshot: (sessionId) =>
+        set((s) => {
+          const snapshot: SessionSnapshot = {
+            combatants: s.combatants,
+            currentCombatantId: s.currentCombatantId,
+            round: s.round,
+            timerSeconds: s.timerSeconds,
+            eventLog: s.eventLog,
+            lairFiredRound: s.lairFiredRound,
+            savedAt: Date.now(),
+          }
+          return {
+            campaigns: s.campaigns.map((c) => ({
+              ...c,
+              sessions: c.sessions.map((x) => (x.id === sessionId ? { ...x, snapshot } : x)),
+            })),
+          }
+        }),
+
+      // Resume a saved snapshot: restores the board, round, turn marker, the
+      // lair guard and the fight log. Stale toasts are dropped; the timer
+      // starts paused at full.
+      loadSessionSnapshot: (sessionId) =>
+        set((s) => {
+          const session = s.campaigns
+            .flatMap((c) => c.sessions)
+            .find((x) => x.id === sessionId)
+          const snap = session?.snapshot
+          if (!snap || !session) return {}
+          const restored: LogEntry[] = [
+            ...snap.eventLog,
+            {
+              id: newId(),
+              t: Date.now(),
+              kind: 'encounterLoad',
+              name: session.name,
+              text: 'resumed snapshot',
+            },
+          ]
+          return {
+            combatants: sortByInit(snap.combatants),
+            currentCombatantId: snap.currentCombatantId,
+            round: snap.round,
+            timerSeconds: snap.timerSeconds,
+            timerRemaining: snap.timerSeconds,
+            timerRunning: false,
+            triggerResults: [],
+            lairFiredRound: snap.lairFiredRound,
+            eventLog:
+              restored.length > LOG_CAP ? restored.slice(restored.length - LOG_CAP) : restored,
+          }
+        }),
+
+      // ---------- Lair & legendary actions ----------
+
+      // Enable / disable / reconfigure the lair action. Resetting the
+      // once-per-round guard keeps the reminder honest across settings.
+      setLairAction: (config) => set({ lairAction: config, lairFiredRound: null }),
+
+      spendLegendaryAction: (id) =>
+        set((s) => {
+          const c = s.combatants.find((x) => x.id === id)
+          if (!c || c.legendaryActions <= c.legendaryUsed) return {}
+          return {
+            combatants: s.combatants.map((x) =>
+              x.id === id ? { ...x, legendaryUsed: x.legendaryUsed + 1 } : x
             ),
+            eventLog: logAdd(s, {
+              kind: 'legendaryUse',
+              name: c.name,
+              value: c.legendaryUsed + 1,
+              text: `of ${c.legendaryActions}`,
+            }),
           }
         }),
 
@@ -793,16 +1295,18 @@ export const useStore = create<Store>()(
 
       removeStatblock: (id) =>
         set((s) => ({ statblocks: s.statblocks.filter((sb) => sb.id !== id) })),
-    }),
+      }
+    },
     {
       name: 'turnkeeper-encounter',
-      version: 5,
+      version: 6,
       storage: createJSONStorage(() => localStorage),
       // Persist only the durable fields. Keep this list and SYNC_KEYS (below)
       // in step when adding state — see CLAUDE.md.
       partialize: (state) => pick(state, PERSIST_KEYS) as unknown as EncounterState,
-      // Upgrade older saves (v0 thresholds, v1 oncePerTurn) to the current
-      // trigger schema — see src/data/migrate.ts.
+      // Upgrade older saves (v0 thresholds, v1 oncePerTurn, v5 turn index,
+      // v6 campaign tree / visibility / legendary / lair / event log) to the
+      // current trigger schema — see src/data/migrate.ts.
       migrate: (persisted, _version) => migratePersisted(persisted),
     }
   )

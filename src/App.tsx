@@ -4,7 +4,7 @@ import Timer from './components/Timer'
 import InitiativeList from './components/InitiativeList'
 import DiceRoller from './components/DiceRoller'
 import TablesPanel from './components/TablesPanel'
-import InjuryToast from './components/InjuryToast'
+import ResultToast from './components/ResultToast'
 import EncounterMenu from './components/EncounterMenu'
 import SettingsPanel from './components/SettingsPanel'
 import AddCombatantModal from './components/AddCombatantModal'
@@ -350,7 +350,7 @@ export default function App() {
           setExpandedId(null)
         }}
       />
-      <InjuryToast />
+      <ResultToast />
     </div>
   )
 }

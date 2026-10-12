@@ -41,6 +41,7 @@ export default function EncounterMenu({
       strategyLabelNames,
       tables,
       timerSeconds,
+      lairAction,
     } = useStore.getState()
     const payload = {
       // Export-format marker (v1; independent of the persist schema —
@@ -54,8 +55,29 @@ export default function EncounterMenu({
       strategyLabelNames,
       tables,
       timerSeconds,
+      lairAction,
     }
     download(JSON.stringify(payload, null, 2), `turnkeeper-${today()}.json`)
+    setOpen(false)
+  }
+
+  // The DM-only fight history: every damage tick, turn, trigger, lair action
+  // and death, in order. The JSON is shaped for a future replay viewer; for
+  // now it's an archive the DM can keep with session notes.
+  const exportLog = () => {
+    const { eventLog, round } = useStore.getState()
+    if (eventLog.length === 0) {
+      alert('The fight log is empty — nothing to export yet.')
+      return
+    }
+    const payload = {
+      type: 'turnkeeper-log',
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      round,
+      entries: eventLog,
+    }
+    download(JSON.stringify(payload, null, 2), `turnkeeper-log-${today()}.json`)
     setOpen(false)
   }
 
@@ -154,6 +176,10 @@ export default function EncounterMenu({
         timerRemaining: typeof norm.timerSeconds === 'number' ? norm.timerSeconds : 60,
         timerRunning: false,
         triggerResults: [],
+        // migratePersisted normalises this to a valid config or null; the
+        // once-per-round guard starts fresh either way.
+        lairAction: (norm.lairAction ?? null) as EncounterState['lairAction'],
+        lairFiredRound: null,
       }
       replace(next)
       setOpen(false)
@@ -178,7 +204,7 @@ export default function EncounterMenu({
               }}
               className="w-full text-left px-3 py-2 hover:bg-slate-800 text-sm"
             >
-              Library — scenes & statblocks…
+              Library — campaigns & statblocks…
             </button>
             <div className="border-t border-slate-700 my-1" />
             <button
@@ -213,6 +239,13 @@ export default function EncounterMenu({
               className="w-full text-left px-3 py-2 hover:bg-slate-800 text-sm"
             >
               Import encounter JSON…
+            </button>
+            <button
+              onClick={exportLog}
+              className="w-full text-left px-3 py-2 hover:bg-slate-800 text-sm"
+              title="Export the fight history (turns, damage, triggers, lair actions, deaths) as JSON — replay-ready for future features"
+            >
+              Export fight log…
             </button>
             <div className="border-t border-slate-700 my-1" />
             <div className="px-3 pt-1 pb-0.5 text-[10px] uppercase tracking-wide text-slate-500">

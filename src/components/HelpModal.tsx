@@ -101,18 +101,21 @@ export default function HelpModal({
 
           <section>
             <h3 className="text-base font-semibold text-white mb-1">
-              Library — scenes, encounters & statblocks
+              Library — campaigns, sessions & statblocks
             </h3>
             <p>
               <b>📚 Library</b> in the header (or <kbd className="px-1.5 py-0.5 bg-slate-800 rounded text-xs">L</kbd>)
-              opens your prep library. A <b>Scene</b> (e.g. "Wishing Well") holds
-              several <b>Encounters</b> ("Goblin Ambush", "Griffin Attack"). It
-              ships with an example scene so you can see the shape.
+              opens your prep library, organised as{' '}
+              <b>Campaign → Session → Encounter</b>. A campaign holds the game
+              nights you plan (with notes for the arc); each session holds the
+              encounters you might run that night. It ships with an example so
+              you can see the shape.
             </p>
             <ul className="list-disc pl-5 space-y-1 mt-2">
               <li>
                 Each roster line has a <b>quantity</b> (Goblin ×4) that expands
-                into separate combatants on load.
+                into separate combatants on load, plus a{' '}
+                <b>legendary actions</b> count for bosses.
               </li>
               <li>
                 <b>Initiative</b> per line: <em>roll each</em>, <em>roll as
@@ -121,12 +124,21 @@ export default function HelpModal({
               </li>
               <li>
                 <b>Load ▶</b> replaces the current fight with that encounter
-                (rolling initiative as configured). <b>Save current fight here</b>
-                captures the live board back into the scene.
+                (rolling initiative as configured). <b>Save current fight
+                here</b> captures the live board back as a fresh full-HP
+                template.
               </li>
               <li>
-                <b>Export / Import</b> a scene as JSON (bundling its statblocks)
-                to share setups or prep offline.
+                <b>Mid-fight snapshot</b> — the "pack up mid-boss-fight, resume
+                next week" button. <b>Save live board</b> captures HP,
+                conditions, death saves, round, turn marker <em>and the fight
+                log</em> into the session; <b>Resume ▶</b> restores it exactly.
+                Rules (triggers, tables) stay live, so tweaks between sessions
+                apply on resume.
+              </li>
+              <li>
+                <b>Export / Import</b> a session as JSON (bundling its
+                statblocks) to share setups or prep offline.
               </li>
             </ul>
             <p className="mt-2">
@@ -145,7 +157,8 @@ export default function HelpModal({
               roster line or a combatant; then <b>hover</b> the{' '}
               <b>📜 statblock</b> chip for a quick line, or <b>click</b> it (or
               expand the card) for the full block. Statblocks are DM-only — they
-              never appear on the player view.
+              never appear on the player view. Campaigns are too: planning data
+              never syncs to the player window.
             </p>
           </section>
 
@@ -208,15 +221,40 @@ export default function HelpModal({
 
           <section>
             <h3 className="text-base font-semibold text-white mb-1">
+              Lair & legendary actions
+            </h3>
+            <p>
+              Two boss-flow helpers, both optional, both visible to players.
+            </p>
+            <ul className="list-disc pl-5 space-y-1 mt-2">
+              <li>
+                <b>Lair action</b> (Settings tab): mark a slot at an initiative
+                count — 5e convention is 20. A purple marker row appears in the
+                order on both windows, and a reminder fires when the count is
+                passed (once per round). Nothing happens automatically; it's a
+                prompt for you to narrate.
+              </li>
+              <li>
+                <b>Legendary actions</b>: set a per-round count when adding a
+                boss (or on its roster line). While it has uses left and someone
+                else's turn is underway, a <b>⚡ reminder row</b> is interjected
+                after the active card — spend one there or from the expanded
+                card. Uses return automatically at the start of its own turn.
+              </li>
+            </ul>
+          </section>
+
+          <section>
+            <h3 className="text-base font-semibold text-white mb-1">
               Triggers — injuries and beyond
             </h3>
             <p>
-              A <b>trigger</b> is a rule: "when something happens → roll a
-              table." You manage them in the <b>Settings</b> tab.
+              A <b>trigger</b> is a rule: "when EVENT happens → do ACTION." You
+              manage them in the <b>Settings</b> tab.
             </p>
             <p className="mt-2">
-              The built-in injury rule is <b>two triggers on one table</b>: a
-              single hit dealing ≥ 25 % of max HP rolls the injury table{' '}
+              The seeded injury rule is <b>two triggers on one sample table</b>:
+              a single hit dealing ≥ 25 % of max HP rolls the injury table{' '}
               <em>once</em>; ≥ 50 % rolls the <em>same</em> table <em>twice</em>.
               When several massive-damage triggers match one hit, only the
               highest fires. Each trigger has a <b>Fire at most</b> cadence —{' '}
@@ -226,12 +264,29 @@ export default function HelpModal({
               reset lives in <b>Settings</b> and the <b>Encounter ▾</b> menu.
             </p>
             <p className="mt-2">
-              Other events you can trigger on: a combatant dropping to{' '}
-              <b>0 HP</b>, or a new <b>combatant being added</b> (e.g. roll on a
-              reinforcements / random-encounter table). When a trigger fires a
-              toast prompts you — players can roll the die physically, or click{' '}
-              <b>Roll</b> to do it in-app. Injury reveals also flash on the
-              player view; combatant-added notes stay on the DM panel.
+              <b>Events</b> you can trigger on: a single hit ≥ % of max HP,
+              dropping to <b>0 HP</b>, <b>HP crossing below a % threshold</b>{' '}
+              (bloodied / phase changes — crossing-based, so healing back above
+              re-arms it), a <b>combatant being added</b> (reinforcements /{' '}
+              random-encounter table), a <b>round beginning</b> (specific round
+              or every round — "round 3: the ceiling collapses"), a{' '}
+              <b>combatant's turn beginning</b> (lair-action or start-of-turn
+              reminders), and a <b>condition being applied</b> (react to
+              poison, stun…).
+            </p>
+            <p className="mt-2">
+              <b>Actions</b>: roll on a table (players can roll the die
+              physically, or you click <b>Roll</b> in the toast), show a note,
+              auto-<b>apply a condition</b> (with a round timer / save-ends), or
+              deal / heal HP automatically (bleeding engines, regeneration).
+              Automatic damage from a trigger never re-fires triggers, so a
+              bleed can't cascade into more rolls.
+            </p>
+            <p className="mt-2">
+              <b>Show result to</b> controls where the fired result appears:
+              DM-only toasts, or <b>DM + players</b> / <b>players-only</b>{' '}
+              announcements that flash as a banner on the player window — great
+              for dramatic reveals.
             </p>
           </section>
 
@@ -266,8 +321,10 @@ export default function HelpModal({
               Tables
             </h3>
             <p>
-              The <b>tables</b> tab seeds an <b>Injury Table</b> you can edit.
-              Add your own (treasure, complications, reinforcements…), edit
+              The <b>tables</b> tab seeds two <b>editable samples</b> — an{' '}
+              <b>Injury Table</b> and a <b>Dramatic Complications</b> table —
+              as starting points, not prescribed rules. Rewrite or replace
+              them; add your own (treasure, madness, reinforcements…), edit
               ranges and results in place, reorder entries with ▲/▼, roll
               directly, <b>Duplicate</b> a table to spin a variant, and{' '}
               <b>Delete</b> any table. Import / export individual tables as
@@ -355,8 +412,9 @@ export default function HelpModal({
             </p>
             <ul className="list-disc pl-5 mt-1 space-y-1">
               <li>
-                <b>New encounter</b> — clears combatants, keeps your tables,
-                settings, and strategy labels.
+                <b>New encounter</b> — clears combatants and the fight log,
+                keeps your tables, triggers, strategy labels, campaigns and
+                lair-action setting.
               </li>
               <li>
                 <b>Reset injury triggers</b> — manual clear (they reset on
@@ -365,6 +423,13 @@ export default function HelpModal({
               <li>
                 <b>Export / Import encounter JSON</b> — prep fights ahead of
                 time and load them at the table.
+              </li>
+              <li>
+                <b>Export fight log</b> — the full history of the current
+                fight (turns, damage, heals, death saves, triggers, lair and
+                legendary actions, loads) as replay-shaped JSON. The log
+                lives only in the DM window and clears when you start a new
+                encounter — export it first if you want to keep it.
               </li>
             </ul>
           </section>
