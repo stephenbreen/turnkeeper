@@ -135,13 +135,15 @@ via `BroadcastChannel` in the same browser.
   field (`2d6+3`, `1d20-1`, `3d4+2d6+1`).
 - Rolling history (last 30) with per-die results and modifier breakdown.
 
-### Light & dark themes
-- A parchment "Player's Handbook" **light** theme and a warm near-black **dark**
-  theme, toggled with the **🌙 Dark / ☀️ Light** button in the header. The choice
-  is remembered per window and the player popout follows the DM's toggle live.
+### Four themes for the room you're in
+- A **palette picker** in both headers (DM and player view) — Parchment (cream
+  "Player's Handbook" light), **Ember** (warm near-black, burgundy & gold),
+  **Midnight** (cool slate + indigo deep dark) and **Dusk** (a lighter slate
+  dark, gentler in normal indoor light). The choice is remembered per window;
+  the player popout follows the DM's pick live, or can choose its own.
 - On desktop, the **Hide panel / Show panel** header button collapses the right
   panel (dice / tables / settings) so the initiative list gets the full width.
-- The visual language (tokens, typography, both palettes) is documented in
+- The visual language (tokens, typography, all four palettes) is documented in
   [`DESIGN.md`](DESIGN.md).
 
 ### Encounter persistence
@@ -329,7 +331,7 @@ src/
 ├── App.tsx               DM shell (header + split panel)
 ├── PlayerView.tsx        Read-only player popout
 ├── store.ts              Zustand store + persist + BroadcastChannel sync
-├── theme.ts              Light/dark theme per window (localStorage + storage event)
+├── theme.ts              Palette picker (Parchment/Ember/Midnight/Dusk) per window
 ├── types.ts              Combatant, Trigger, RollTable, Statblock, EncounterState
 ├── data/
 │   ├── conditions.ts     Standard 5e conditions list

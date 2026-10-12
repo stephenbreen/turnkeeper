@@ -6,9 +6,13 @@
   Theming — see DESIGN.md.
   The neutral (slate) and accent (indigo) Tailwind scales are driven by CSS
   variables (space-separated RGB triples so Tailwind's /<alpha-value> works).
-  Toggling `.dark` on <html> flips the whole app between the parchment "light"
-  theme and the warm "dark" theme without touching component classes.
+  The active theme is a `data-theme` attribute on <html>, set pre-paint by
+  theme.ts from the saved per-window preference; each theme just swaps the
+  variable values — component classes never change.
+  `:root` holds the Parchment values so the app is light-by-default before
+  the saved choice applies; the other three themes override in their blocks.
   Slate numbers keep their semantic role: LOW = text/ink, HIGH = surfaces.
+  (In Midnight/Dusk the values align with Tailwind's stock slate/indigo.)
 */
 :root {
   /* neutral scale (parchment + ink) */
@@ -49,7 +53,11 @@
   color-scheme: light;
 }
 
-.dark {
+/*
+  Ember — warm near-black page with burgundy + gold accents (the original
+  dark theme). Values were previously the `.dark` block.
+*/
+[data-theme='ember'] {
   /* neutral scale (warm near-black + light ink) */
   --slate-50: 253 246 227;
   --slate-100: 240 230 210; /* primary ink → light warm */
@@ -83,6 +91,85 @@
 
   /* statblock accent — warm gold on dark */
   --sb-heading: 217 164 65;
+
+  color-scheme: dark;
+}
+
+/*
+  Midnight — cool slate + indigo, the classic dark palette (Tailwind's stock
+  numbers mapped onto the token roles). For pure-dark rooms.
+*/
+[data-theme='midnight'] {
+  --slate-50: 248 250 252;
+  --slate-100: 241 245 249;
+  --slate-200: 226 232 240;
+  --slate-300: 203 213 225;
+  --slate-400: 148 163 184;
+  --slate-500: 100 116 139;
+  --slate-600: 71 85 105;
+  --slate-700: 51 65 85;
+  --slate-800: 30 41 59;
+  --slate-900: 15 23 42;
+  --slate-950: 2 6 23;
+
+  --indigo-300: 165 180 252;
+  --indigo-400: 129 140 248;
+  --indigo-500: 99 102 241;
+  --indigo-600: 79 70 229;
+  --indigo-700: 67 56 202;
+  --indigo-800: 55 48 163;
+  --indigo-900: 49 46 129;
+  --indigo-950: 30 27 75;
+
+  --input-bg: 30 41 59;
+  --input-ink: 241 245 249;
+  --input-border: 51 65 85;
+  --input-focus: 99 102 241;
+  --scroll-track: 15 23 42;
+  --scroll-thumb: 51 65 85;
+  --scroll-thumb-hover: 71 85 105;
+
+  /* statblock accent — light indigo on cool dark */
+  --sb-heading: 129 140 248;
+
+  color-scheme: dark;
+}
+
+/*
+  Dusk — lighter slate dark, easier on the eyes in normal indoor light.
+*/
+[data-theme='dusk'] {
+  --slate-50: 248 250 252;
+  --slate-100: 241 245 249;
+  --slate-200: 232 238 244;
+  --slate-300: 222 230 239;
+  --slate-400: 203 213 225;
+  --slate-500: 148 163 184;
+  --slate-600: 120 133 153;
+  --slate-700: 100 116 139;
+  --slate-800: 71 85 105;
+  --slate-900: 51 65 85;
+  --slate-950: 30 41 59;
+
+  --indigo-300: 199 210 254;
+  --indigo-400: 129 140 248;
+  --indigo-500: 119 130 246;
+  --indigo-600: 99 102 241;
+  --indigo-700: 79 70 229;
+  --indigo-800: 67 56 202;
+  --indigo-900: 49 46 129;
+  --indigo-950: 55 51 128;
+
+  --input-bg: 71 85 105;
+  --input-ink: 241 245 249;
+  --input-border: 100 116 139;
+  --input-focus: 129 140 248;
+  --scroll-track: 51 65 85;
+  --scroll-thumb: 100 116 139;
+  --scroll-thumb-hover: 120 133 153;
+
+  /* statblock accent — pale indigo on slate */
+  --sb-heading: 165 180 252;
 
   color-scheme: dark;
 }

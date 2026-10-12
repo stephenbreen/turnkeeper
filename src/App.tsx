@@ -10,7 +10,7 @@ import SettingsPanel from './components/SettingsPanel'
 import AddCombatantModal from './components/AddCombatantModal'
 import HelpModal from './components/HelpModal'
 import LibraryModal from './components/LibraryModal'
-import ThemeToggle from './components/ThemeToggle'
+import ThemeSwitcher from './components/ThemeSwitcher'
 import KofiWidget from './components/KofiWidget'
 
 type Tab = 'initiative' | 'dice' | 'tables' | 'settings'
@@ -214,12 +214,12 @@ export default function App() {
         <button
           onClick={() => setLibraryOpen(true)}
           className="btn hidden sm:inline-flex"
-          title="Scenes, encounters & statblocks (L)"
+          title="Campaigns, sessions & statblocks (L)"
         >
           📚 Library
         </button>
         <EncounterMenu onOpenLibrary={() => setLibraryOpen(true)} />
-        <ThemeToggle />
+        <ThemeSwitcher />
         <button
           onClick={() => setHelpOpen(true)}
           className="btn inline-flex items-center gap-1.5"
@@ -239,7 +239,7 @@ export default function App() {
             onClick={() => setTab(t)}
             className={`flex-1 py-3 capitalize text-sm font-medium transition ${
               tab === t
-                ? 'bg-slate-800 text-white border-b-2 border-indigo-400 -mb-px'
+                ? 'bg-slate-800 text-slate-100 border-b-2 border-indigo-400 -mb-px'
                 : 'text-slate-400 hover:bg-slate-900'
             }`}
           >
@@ -284,7 +284,7 @@ export default function App() {
                 onClick={() => setTab(t)}
                 className={`flex-1 py-2.5 capitalize text-sm font-medium transition ${
                   sideTab === t
-                    ? 'bg-slate-800 text-white border-b-2 border-indigo-400 -mb-px'
+                    ? 'bg-slate-800 text-slate-100 border-b-2 border-indigo-400 -mb-px'
                     : 'text-slate-400 hover:bg-slate-900'
                 }`}
               >

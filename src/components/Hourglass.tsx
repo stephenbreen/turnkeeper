@@ -19,7 +19,9 @@ export default function Hourglass({
 
   const r = Math.max(0, Math.min(1, total > 0 ? remaining / total : 0))
   const sand = danger ? '#ef4444' : '#f59e0b'
-  const frame = danger ? '#fca5a5' : '#94a3b8'
+  // The frame reads the themed muted-ink token through currentColor (set on
+  // the <svg> below) — a hard-coded slate was invisible on light palettes.
+  const frame = 'currentColor'
   const bulbFill = 'rgba(148, 163, 184, 0.08)'
 
   const topSandY = (1 - r) * 100
@@ -35,7 +37,7 @@ export default function Hourglass({
       viewBox="0 0 100 200"
       width={width}
       height={size}
-      className="shrink-0"
+      className={`shrink-0 ${danger ? 'text-red-300' : 'text-slate-400'}`}
       role="img"
       aria-label={`${remaining} seconds remaining`}
     >
