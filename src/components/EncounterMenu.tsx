@@ -9,7 +9,9 @@ export default function EncounterMenu({
 }: {
   onOpenLibrary: () => void
 }) {
-  const state = useStore()
+  // No store subscription for data: nothing here renders reactively, and the
+  // old selector-less `useStore()` re-rendered the menu on every timer tick.
+  // Handlers read fresh state via getState() at click time.
   const replace = useStore((s) => s.replaceState)
   const reset = useStore((s) => s.resetEncounter)
   const clearFired = useStore((s) => s.clearFiredTriggers)
@@ -39,8 +41,12 @@ export default function EncounterMenu({
       strategyLabelNames,
       tables,
       timerSeconds,
-    } = state
+    } = useStore.getState()
     const payload = {
+      // Export-format marker (v1; independent of the persist schema —
+      // migratePersisted is shape-driven, so imports stay compatible).
+      type: 'turnkeeper-encounter',
+      version: 1,
       combatants,
       round,
       currentCombatantId,
@@ -54,7 +60,7 @@ export default function EncounterMenu({
   }
 
   const exportParty = () => {
-    const members = toParty(state.combatants)
+    const members = toParty(useStore.getState().combatants)
     if (members.length === 0) {
       alert('No players to export. Add PCs first (set type to "PC" when adding).')
       return
@@ -98,7 +104,22 @@ export default function EncounterMenu({
     if (!file) return
     try {
       const txt = await file.text()
-      const data = JSON.parse(txt)
+      const data = JSON.parse(txt) as Record<string, unknown>
+      // Typed files we don't recognise (a party file, something else
+      // entirely) are rejected up front rather than importing as an
+      // empty encounter. Unmarked files are treated as legacy exports —
+      // the first exports predate the marker.
+      if (typeof data.type === 'string' && data.type !== 'turnkeeper-encounter') {
+        alert(`That file is a "${data.type}" — not a Turnkeeper encounter export.`)
+        return
+      }
+      if (!Array.isArray(data.combatants)) {
+        alert(
+          'No combatants found in that file — is it an encounter export? ' +
+            '(Party files import via "Import party…".)'
+        )
+        return
+      }
       if (!confirm('Replace the current encounter with imported data?')) return
       // Normalise through the same migration as persisted state so older files
       // (thresholds / oncePerTurn) and combatants missing the fired-trigger
@@ -115,19 +136,20 @@ export default function EncounterMenu({
         combatants.some((c) => (c as { id?: string }).id === importedId)
           ? importedId
           : null
+      const current = useStore.getState()
       const next: Partial<EncounterState> = {
         combatants: combatants as EncounterState['combatants'],
         round: typeof norm.round === 'number' ? norm.round : 1,
         currentCombatantId,
         triggers: (triggers.length
           ? triggers
-          : state.triggers) as EncounterState['triggers'],
+          : current.triggers) as EncounterState['triggers'],
         strategyLabelNames: Array.isArray(norm.strategyLabelNames)
           ? (norm.strategyLabelNames as string[])
-          : ['Surrounded'],
+          : current.strategyLabelNames,
         tables: (Array.isArray(norm.tables)
           ? norm.tables
-          : state.tables) as EncounterState['tables'],
+          : current.tables) as EncounterState['tables'],
         timerSeconds: typeof norm.timerSeconds === 'number' ? norm.timerSeconds : 60,
         timerRemaining: typeof norm.timerSeconds === 'number' ? norm.timerSeconds : 60,
         timerRunning: false,

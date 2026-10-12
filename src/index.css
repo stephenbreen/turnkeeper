@@ -185,6 +185,23 @@ body {
   75% { transform: translateX(-4px); }
 }
 
+/*
+  Reduced motion — honour the OS accessibility setting. Kills the decorative
+  animation and transitions: the danger timer's pulse (animate-pulse), the
+  injury banner's shake/slide, the hourglass's per-second sand drain. Nothing
+  is lost — every one of those has a static state (red timer box, red banner,
+  big number) that carries the same information.
+*/
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 /* Scrollbar — leather rail, themed */
 ::-webkit-scrollbar {
   width: 10px;

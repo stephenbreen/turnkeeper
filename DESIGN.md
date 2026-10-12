@@ -123,6 +123,10 @@ surface should use `slate-100/200/400`.
 - **Motion:** purposeful and rare. Injury banner `injury-enter` + `injury-shake`
   (keyframes in `index.css`); the draining `Hourglass`; `scale-[1.01]` on the
   active player row. Avoid decorative animation elsewhere.
+- **Reduced motion:** `index.css` neutralizes all animation/transition under
+  `prefers-reduced-motion: reduce` — every animated state has a static
+  equivalent (red timer box, red banner, big number). Any new motion must
+  keep that property: never make animation the *only* carrier of information.
 
 ---
 

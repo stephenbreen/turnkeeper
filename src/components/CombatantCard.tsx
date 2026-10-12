@@ -34,6 +34,19 @@ export default function CombatantCard({
   const [sbOpen, setSbOpen] = useState(false)
   const [condOpen, setCondOpen] = useState(false)
   const [editingName, setEditingName] = useState(false)
+  // Draft name while editing. The store is only touched on commit, so Escape
+  // can truly revert instead of leaving half-typed edits in place.
+  const [nameDraft, setNameDraft] = useState('')
+
+  const startRename = () => {
+    setNameDraft(c.name)
+    setEditingName(true)
+  }
+  const commitRename = () => {
+    const trimmed = nameDraft.trim()
+    if (trimmed && trimmed !== c.name) update(c.id, { name: trimmed })
+    setEditingName(false)
+  }
 
   // Row-header quick HP control — keyboard-driven (Enter / Shift+Enter).
   const [quick, setQuick] = useState('')
@@ -130,18 +143,24 @@ export default function CombatantCard({
             {editingName ? (
               <input
                 autoFocus
-                value={c.name}
-                onChange={(e) => update(c.id, { name: e.target.value })}
+                value={nameDraft}
+                onChange={(e) => setNameDraft(e.target.value)}
                 onClick={stop}
                 onKeyDown={(e) => {
                   stop(e)
-                  if (e.key === 'Enter' || e.key === 'Escape') {
+                  if (e.key === 'Enter') {
                     e.preventDefault()
+                    commitRename()
+                  } else if (e.key === 'Escape') {
+                    e.preventDefault()
+                    // Revert: reset the draft so a stray blur-event commit
+                    // after this is a no-op, then close without writing.
+                    setNameDraft(c.name)
                     setEditingName(false)
                     e.currentTarget.blur()
                   }
                 }}
-                onBlur={() => setEditingName(false)}
+                onBlur={commitRename}
                 className="input text-sm font-semibold w-36 sm:w-44"
                 placeholder="Name"
                 autoComplete="off"
@@ -156,7 +175,7 @@ export default function CombatantCard({
               <button
                 onClick={(e) => {
                   e.stopPropagation()
-                  setEditingName(true)
+                  startRename()
                 }}
                 className="shrink-0 w-7 h-7 sm:w-6 sm:h-6 rounded flex items-center justify-center text-sm text-slate-400 hover:bg-white/10 hover:text-slate-200"
                 title="Rename"

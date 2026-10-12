@@ -590,7 +590,10 @@ export const useStore = create<Store>()(
       resetTimer: () =>
         set((s) => ({ timerRemaining: s.timerSeconds, timerRunning: false })),
 
-      replaceState: (partial) => set(partial as Store),
+      // Raw merge used by the encounter importer. The importer builds the
+      // partial carefully (migrate + marker validation + id check) — this is
+      // the one sanctioned "write whatever you're given" escape hatch.
+      replaceState: (partial) => set(partial),
 
       resetEncounter: () =>
         set((s) => {
