@@ -21,6 +21,7 @@ export default function CombatantCard({
 }) {
   const update = useStore((s) => s.updateCombatant)
   const remove = useStore((s) => s.removeCombatant)
+  const duplicate = useStore((s) => s.duplicateCombatant)
   const damage = useStore((s) => s.applyDamage)
   const heal = useStore((s) => s.applyHeal)
   const toggleCondition = useStore((s) => s.toggleCondition)
@@ -32,6 +33,7 @@ export default function CombatantCard({
   const sb = c.statblockId ? statblocks.find((x) => x.id === c.statblockId) : undefined
   const [sbOpen, setSbOpen] = useState(false)
   const [condOpen, setCondOpen] = useState(false)
+  const [editingName, setEditingName] = useState(false)
 
   // Row-header quick HP control — keyboard-driven (Enter / Shift+Enter).
   const [quick, setQuick] = useState('')
@@ -125,7 +127,44 @@ export default function CombatantCard({
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="font-semibold truncate">{c.name}</span>
+            {editingName ? (
+              <input
+                autoFocus
+                value={c.name}
+                onChange={(e) => update(c.id, { name: e.target.value })}
+                onClick={stop}
+                onKeyDown={(e) => {
+                  stop(e)
+                  if (e.key === 'Enter' || e.key === 'Escape') {
+                    e.preventDefault()
+                    setEditingName(false)
+                    e.currentTarget.blur()
+                  }
+                }}
+                onBlur={() => setEditingName(false)}
+                className="input text-sm font-semibold w-36 sm:w-44"
+                placeholder="Name"
+                autoComplete="off"
+                data-1p-ignore="true"
+                data-lpignore="true"
+                data-form-type="other"
+              />
+            ) : (
+              <span className="font-semibold truncate">{c.name}</span>
+            )}
+            {expanded && !editingName && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setEditingName(true)
+                }}
+                className="shrink-0 w-7 h-7 sm:w-6 sm:h-6 rounded flex items-center justify-center text-sm text-slate-400 hover:bg-white/10 hover:text-slate-200"
+                title="Rename"
+                aria-label={`Rename ${c.name}`}
+              >
+                ✏️
+              </button>
+            )}
             <span
               className={`text-[10px] px-1.5 py-0.5 rounded ${
                 c.type === 'pc' ? 'bg-emerald-900 text-emerald-200' : 'bg-red-900 text-red-200'
@@ -398,83 +437,6 @@ export default function CombatantCard({
             </div>
           )}
 
-          {c.type === 'pc' && (
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="text-[10px] uppercase tracking-wide text-slate-400">
-                Class
-              </span>
-              <select
-                value={c.playerClass ?? 'none'}
-                onChange={(e) =>
-                  update(c.id, { playerClass: e.target.value as PlayerClassId })
-                }
-                className="input"
-                title="Sets the icon shown in the player view. Default is the adventurer sword."
-              >
-                {PLAYER_CLASSES.map((opt) => (
-                  <option key={opt.id} value={opt.id}>
-                    {opt.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
-            <label className="flex flex-col gap-1">
-              <span className="text-[10px] uppercase tracking-wide text-slate-400">
-                Initiative
-              </span>
-              <input
-                type="number"
-                value={c.initiative}
-                onChange={(e) =>
-                  update(c.id, { initiative: parseInt(e.target.value, 10) || 0 })
-                }
-                className="input"
-              />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-[10px] uppercase tracking-wide text-slate-400">
-                Max HP
-              </span>
-              <input
-                type="number"
-                value={c.maxHP}
-                onChange={(e) =>
-                  update(c.id, { maxHP: Math.max(1, parseInt(e.target.value, 10) || 1) })
-                }
-                className="input"
-              />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-[10px] uppercase tracking-wide text-slate-400">AC</span>
-              <input
-                type="number"
-                value={c.AC}
-                onChange={(e) =>
-                  update(c.id, { AC: parseInt(e.target.value, 10) || 0 })
-                }
-                className="input"
-              />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-[10px] uppercase tracking-wide text-slate-400">
-                Passive Perception
-              </span>
-              <input
-                type="number"
-                value={c.passivePerception}
-                onChange={(e) =>
-                  update(c.id, {
-                    passivePerception: parseInt(e.target.value, 10) || 0,
-                  })
-                }
-                className="input"
-              />
-            </label>
-          </div>
-
           <div>
             <div className="text-[10px] uppercase tracking-wide text-slate-400 mb-1">
               Conditions
@@ -565,6 +527,84 @@ export default function CombatantCard({
             </div>
           )}
 
+          {/* Sheet stats */}
+          <div className="rounded-lg border border-slate-800 bg-slate-950/30 p-3 space-y-2">
+            <div className="text-[10px] uppercase tracking-wide text-slate-400">
+              Stats
+            </div>
+            {c.type === 'pc' && (
+              <label className="flex flex-col gap-1 text-sm">
+                <span className="text-[10px] uppercase tracking-wide text-slate-400">
+                  Class
+                </span>
+                <select
+                  value={c.playerClass ?? 'none'}
+                  onChange={(e) =>
+                    update(c.id, { playerClass: e.target.value as PlayerClassId })
+                  }
+                  className="input"
+                  title="Sets the icon shown in the player view. Default is the adventurer sword."
+                >
+                  {PLAYER_CLASSES.map((opt) => (
+                    <option key={opt.id} value={opt.id}>
+                      {opt.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
+              <label className="flex flex-col gap-1">
+                <span className="text-[10px] uppercase tracking-wide text-slate-400">
+                  Initiative
+                </span>
+                <input
+                  type="number"
+                  value={c.initiative}
+                  onChange={(e) =>
+                    update(c.id, { initiative: parseInt(e.target.value, 10) || 0 })
+                  }
+                  className="input"
+                />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-[10px] uppercase tracking-wide text-slate-400">
+                  Max HP
+                </span>
+                <input
+                  type="number"
+                  value={c.maxHP}
+                  onChange={(e) =>
+                    update(c.id, { maxHP: Math.max(1, parseInt(e.target.value, 10) || 1) })
+                  }
+                  className="input"
+                />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-[10px] uppercase tracking-wide text-slate-400">AC</span>
+                <input
+                  type="number"
+                  value={c.AC}
+                  onChange={(e) => update(c.id, { AC: parseInt(e.target.value, 10) || 0 })}
+                  className="input"
+                />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-[10px] uppercase tracking-wide text-slate-400">
+                  Passive Perception
+                </span>
+                <input
+                  type="number"
+                  value={c.passivePerception}
+                  onChange={(e) =>
+                    update(c.id, { passivePerception: parseInt(e.target.value, 10) || 0 })
+                  }
+                  className="input"
+                />
+              </label>
+            </div>
+          </div>
+
           {(statblocks.length > 0 || sb) && (
             <div>
               <div className="text-[10px] uppercase tracking-wide text-slate-400 mb-1">
@@ -623,17 +663,13 @@ export default function CombatantCard({
               Dead
             </label>
             <div className="flex gap-2 w-full sm:w-auto sm:ml-auto">
-              <input
-                value={c.name}
-                onChange={(e) => update(c.id, { name: e.target.value })}
-                className="input flex-1 sm:w-40"
-                title="Rename"
-                // Suppress password-manager / autofill overlays on the name field.
-                autoComplete="off"
-                data-1p-ignore="true"
-                data-lpignore="true"
-                data-form-type="other"
-              />
+              <button
+                onClick={() => duplicate(c.id)}
+                className="btn"
+                title="Add a fresh full-HP copy of this combatant"
+              >
+                ⧉ Duplicate
+              </button>
               <button
                 onClick={() => {
                   if (confirm(`Remove ${c.name} from the encounter?`)) remove(c.id)

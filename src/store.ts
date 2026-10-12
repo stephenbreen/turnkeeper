@@ -19,6 +19,7 @@ import { buildDefaultEncounter } from './data/defaultState'
 import { expandRoster } from './data/encounter'
 import { migratePersisted } from './data/migrate'
 import { newId } from './utils/id'
+import { nextName } from './utils/names'
 import { rollExpression, matchTableEntry } from './utils/dice'
 
 // ---------- Trigger engine helpers ----------
@@ -87,6 +88,7 @@ function buildResult(
 type Actions = {
   addCombatant: (c: Partial<Combatant>) => void
   addCombatants: (list: Partial<Combatant>[]) => void
+  duplicateCombatant: (id: string) => void
   updateCombatant: (id: string, patch: Partial<Combatant>) => void
   removeCombatant: (id: string) => void
   applyDamage: (id: string, amount: number) => void
@@ -205,6 +207,8 @@ function buildCombatant(c: Partial<Combatant>): Combatant {
   }
 }
 
+// Next-name logic for duplicateCombatant lives in utils/names.ts.
+
 export const useStore = create<Store>()(
   persist(
     (set, get) => ({
@@ -240,6 +244,28 @@ export const useStore = create<Store>()(
         set((s) => ({
           combatants: sortByInit([...s.combatants, ...list.map(buildCombatant)]),
         })),
+
+      // Duplicate a combatant as a fresh full-HP copy (a reinforcement): same
+      // sheet, auto-incremented name, no carried-over combat state. Like
+      // addCombatants, it does not fire combatantAdded triggers.
+      duplicateCombatant: (id) =>
+        set((s) => {
+          const c = s.combatants.find((x) => x.id === id)
+          if (!c) return {}
+          const copy = buildCombatant({
+            name: nextName(c.name, s.combatants.map((x) => x.name)),
+            type: c.type,
+            maxHP: c.maxHP,
+            AC: c.AC,
+            passivePerception: c.passivePerception,
+            initiative: c.initiative,
+            playerClass: c.playerClass,
+            statblockId: c.statblockId,
+            nameVisibleToPlayers: c.nameVisibleToPlayers,
+            notes: c.notes,
+          })
+          return { combatants: sortByInit([...s.combatants, copy]) }
+        }),
 
       updateCombatant: (id, patch) =>
         set((s) => ({

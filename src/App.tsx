@@ -300,7 +300,7 @@ export default function App() {
           Part of the flex column (not fixed) so it never overlaps the list, and
           padded for the iOS home indicator. Prev/Next live in the header on
           desktop, so this is hidden there. */}
-      <div className="sm:hidden flex items-stretch gap-2 border-t border-slate-800 bg-slate-900 px-2 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+      <div className="sm:hidden flex items-stretch gap-2 border-t border-slate-800 bg-slate-900 px-2 py-2">
         <button
           onClick={previousTurn}
           disabled={combatants.length === 0}
@@ -327,6 +327,18 @@ export default function App() {
         </button>
       </div>
 
+      {/* Footer — DM view only. Slim; pads for the iOS home indicator since it's
+          the bottom-most element. */}
+      <footer className="flex items-center justify-center gap-3 border-t border-slate-800 bg-slate-900 px-4 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] text-xs text-slate-500">
+        <span className="hidden sm:inline">
+          The Breaking — browser initiative tracker for DMs
+        </span>
+        <span className="hidden sm:inline text-slate-700" aria-hidden>
+          ·
+        </span>
+        <KofiWidget />
+      </footer>
+
       <AddCombatantModal open={addOpen} onClose={() => setAddOpen(false)} />
       <HelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
       <LibraryModal
@@ -339,7 +351,6 @@ export default function App() {
         }}
       />
       <InjuryToast />
-      <KofiWidget />
     </div>
   )
 }

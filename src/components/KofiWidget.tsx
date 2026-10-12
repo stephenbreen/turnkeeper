@@ -1,57 +1,20 @@
-import { useEffect } from 'react'
-
-// Ko-fi "Buy me a coffee" floating widget. Rendered only from the DM view
-// (App), never PlayerView, so the players' screen stays clean. The button is
-// themed to the app's burgundy and lifted above the mobile bottom bar via CSS
-// in index.css (targets Ko-fi's .floatingchat-container-wrap classes).
+// Ko-fi "Buy me a coffee" button. A plain link to the Ko-fi page — no overlay
+// iframe, so there's no embedded scrollbar. Styled with the shared burgundy
+// button token (.btn-primary in index.css). Rendered in the DM-view footer
+// only (never the player view).
 
 const KOFI_USERNAME = 'stephen91117'
-const SCRIPT_SRC = 'https://storage.ko-fi.com/cdn/scripts/overlay-widget.js'
-
-declare global {
-  interface Window {
-    kofiWidgetOverlay?: {
-      draw: (username: string, config: Record<string, string>) => void
-    }
-  }
-}
-
-// Draw at most once per page load (StrictMode runs effects twice in dev, and
-// the widget appends a fixed button to <body> that we don't want duplicated).
-let widgetDrawn = false
 
 export default function KofiWidget() {
-  useEffect(() => {
-    const draw = () => {
-      if (widgetDrawn || !window.kofiWidgetOverlay) return
-      widgetDrawn = true
-      window.kofiWidgetOverlay.draw(KOFI_USERNAME, {
-        type: 'floating-chat',
-        'floating-chat.donateButton.text': 'Buy me a coffee',
-        'floating-chat.donateButton.background-color': '#7c1d1d',
-        'floating-chat.donateButton.text-color': '#fdf6e3',
-      })
-    }
-
-    if (window.kofiWidgetOverlay) {
-      draw()
-      return
-    }
-
-    const existing = document.querySelector<HTMLScriptElement>(
-      `script[src="${SCRIPT_SRC}"]`
-    )
-    if (existing) {
-      existing.addEventListener('load', draw)
-      return () => existing.removeEventListener('load', draw)
-    }
-
-    const script = document.createElement('script')
-    script.src = SCRIPT_SRC
-    script.async = true
-    script.addEventListener('load', draw)
-    document.body.appendChild(script)
-  }, [])
-
-  return null
+  return (
+    <a
+      href={`https://ko-fi.com/${KOFI_USERNAME}`}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="btn-primary inline-flex items-center gap-1.5"
+      title="Support The Breaking on Ko-fi"
+    >
+      <span aria-hidden>☕</span> Buy me a coffee
+    </a>
+  )
 }

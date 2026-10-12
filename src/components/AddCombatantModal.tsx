@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useStore } from '../store'
 import { statblockAC, statblockHP } from '../utils/statblock'
+import { numberedCopies } from '../utils/names'
 
 export default function AddCombatantModal({
   open,
@@ -10,13 +11,16 @@ export default function AddCombatantModal({
   onClose: () => void
 }) {
   const add = useStore((s) => s.addCombatant)
+  const addMany = useStore((s) => s.addCombatants)
   const statblocks = useStore((s) => s.statblocks)
+  const combatantNames = useStore((s) => s.combatants.map((c) => c.name))
   const [name, setName] = useState('')
   const [type, setType] = useState<'pc' | 'monster'>('monster')
   const [maxHP, setMaxHP] = useState<string>('10')
   const [AC, setAC] = useState<string>('10')
   const [pp, setPP] = useState<string>('10')
   const [init, setInit] = useState<string>('10')
+  const [qty, setQty] = useState<string>('1')
   const [statblockId, setStatblockId] = useState<string>('')
 
   useEffect(() => {
@@ -26,6 +30,7 @@ export default function AddCombatantModal({
       setAC('10')
       setPP('10')
       setInit('10')
+      setQty('1')
       setStatblockId('')
     }
   }, [open])
@@ -48,8 +53,8 @@ export default function AddCombatantModal({
   const submit = (addAnother: boolean) => {
     if (!name.trim()) return
     const mh = Math.max(1, parseInt(maxHP, 10) || 1)
-    add({
-      name: name.trim(),
+    const n = Math.max(1, Math.min(50, parseInt(qty, 10) || 1))
+    const base = {
       type,
       maxHP: mh,
       currentHP: mh,
@@ -58,7 +63,17 @@ export default function AddCombatantModal({
       initiative: parseInt(init, 10) || 10,
       nameVisibleToPlayers: type === 'pc',
       statblockId: statblockId || undefined,
-    })
+    }
+    if (n === 1) {
+      // Single add keeps firing "combatant added" triggers, as before.
+      add({ ...base, name: name.trim() })
+    } else {
+      // Bulk add numbers the copies from the lowest unused slot ("Goblin 4",
+      // "Goblin 5", … when 1-3 already exist) and skips combatantAdded
+      // triggers so they don't fire once per copy.
+      const names = numberedCopies(name.trim(), combatantNames, n)
+      addMany(names.map((nm) => ({ ...base, name: nm })))
+    }
     if (addAnother) {
       setName('')
     } else {
@@ -100,6 +115,23 @@ export default function AddCombatantModal({
             Monster / NPC
           </button>
         </div>
+        <label className="flex items-center gap-2">
+          <span className="text-xs text-slate-400">Quantity</span>
+          <input
+            type="number"
+            min={1}
+            max={50}
+            value={qty}
+            onChange={(e) => setQty(e.target.value)}
+            className="input w-20"
+            title="Add several at once — numbered copies, skipping names already in use"
+          />
+          {parseInt(qty, 10) > 1 && (
+            <span className="text-xs text-slate-500">
+              adds numbered copies
+            </span>
+          )}
+        </label>
         {statblocks.length > 0 && (
           <label className="block">
             <span className="text-xs text-slate-400">From statblock (optional)</span>

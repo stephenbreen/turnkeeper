@@ -185,19 +185,6 @@ body {
   75% { transform: translateX(-4px); }
 }
 
-/*
-  Ko-fi floating widget (src/components/KofiWidget.tsx) sits bottom-left. On
-  mobile the DM turn bar occupies the bottom of the screen, so lift the widget
-  above it. Targets Ko-fi's own container classes; !important overrides the
-  inline positioning the widget script sets.
-*/
-@media (max-width: 639px) {
-  .floatingchat-container-wrap,
-  .floatingchat-container-wrap-mobi {
-    bottom: 76px !important;
-  }
-}
-
 /* Scrollbar — leather rail, themed */
 ::-webkit-scrollbar {
   width: 10px;
