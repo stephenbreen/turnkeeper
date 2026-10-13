@@ -184,21 +184,24 @@ Read **`DESIGN.md`** before any visual change — it's the token reference and
 design brief.
 
 - The PHB parchment palette is mapped onto the **`slate`** (neutrals) and
-  **`indigo`** (accent) scales via **CSS variables** (`:root` = light,
-  `.dark` = dark, in `src/index.css`; wired in `tailwind.config.js`). Toggling
-  `.dark` on `<html>` flips the whole app — **don't** add per-component `dark:`
-  variants for color.
+  **`indigo`** (accent) scales via **CSS variables** (`:root` = Parchment,
+  plus a `[data-theme='…']` block per theme in `src/index.css`; wired in
+  `tailwind.config.js`). The active theme is a `data-theme` attribute on
+  `<html>` — **don't** add per-component `dark:` variants for color.
 - `slate` numbers are semantic and *inverted*: **low = ink/text, high =
   surfaces** (so `bg-slate-950` is the page, `text-slate-100` is body ink) — and
-  they stay that way in both themes.
+  they stay that way in all four themes.
 - Theme is a per-window pref in `localStorage['turnkeeper-theme']`
-  (`src/theme.ts`), applied pre-paint in `main.tsx`, toggled by
-  `ThemeToggle`, and synced to the player window via the `storage` event. It is
+  (`src/theme.ts`), applied pre-paint in `main.tsx`, picked from the four
+  palettes in `THEMES` (Parchment/Ember/Midnight/Dusk) via `ThemeSwitcher`,
+  and synced to the player window via the `storage` event. Stored `light` /
+  `dark` values from the old toggle migrate to Parchment/Ember. It is
   **not** in the encounter store.
-- New color must be a token (existing scale or a new `--var` added to *both*
-  `:root` and `.dark`) — never raw hex in a component — and must be checked for
-  contrast in both themes (the statblock's light-red-on-parchment was the bug
-  this system fixes; use `--sb-heading` for statblock accents).
+- New color must be a token (existing scale or a new `--var` added to *every*
+  theme block — `:root` plus the three `[data-theme]` blocks) — never raw hex
+  in a component — and must be checked for contrast in every theme (the
+  statblock's light-red-on-parchment was the bug this system fixes; use
+  `--sb-heading` for statblock accents).
 
 ## Conventions
 

@@ -68,7 +68,7 @@ export default function LibraryModal({
                 key={t}
                 onClick={() => setTab(t)}
                 className={`px-3 py-1 capitalize transition ${
-                  tab === t ? 'bg-slate-700 text-white' : 'text-slate-400 hover:bg-slate-800'
+                  tab === t ? 'bg-slate-700 text-slate-50' : 'text-slate-400 hover:bg-slate-800'
                 }`}
               >
                 {t}
@@ -172,7 +172,7 @@ function SessionsTab({ onLoaded }: { onLoaded: () => void }) {
               key={s.id}
               onClick={() => setSelectedId(s.id)}
               className={`w-full text-left px-3 py-2 text-sm border-b border-slate-800 truncate ${
-                selectedId === s.id ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-900'
+                selectedId === s.id ? 'bg-slate-800 text-slate-100' : 'text-slate-400 hover:bg-slate-900'
               }`}
               title={s.name}
             >

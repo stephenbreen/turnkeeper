@@ -6,7 +6,7 @@ import { withLairSlots } from './utils/order'
 import Hourglass from './components/Hourglass'
 import PlayerAnnouncementBanner from './components/PlayerAnnouncementBanner'
 import CombatantIcon from './components/CombatantIcon'
-import ThemeToggle from './components/ThemeToggle'
+import ThemeSwitcher from './components/ThemeSwitcher'
 import { DeathSavePips } from './components/CombatantCard'
 import { classLabel } from './data/playerClasses'
 
@@ -40,7 +40,7 @@ export default function PlayerView() {
       <PlayerAnnouncementBanner />
       <header className="flex items-center gap-6 px-8 py-4 border-b border-slate-800 bg-slate-900 sticky top-0 z-10">
         <h1 className="text-3xl font-bold tracking-tight">⚔ Turnkeeper</h1>
-        <ThemeToggle />
+        <ThemeSwitcher />
         <div className="flex-1" />
         <div className="text-center">
           <div className="text-xs uppercase tracking-widest text-slate-400">Round</div>
@@ -64,7 +64,7 @@ export default function PlayerView() {
             </div>
             <div
               className={`font-mono font-black leading-none tabular-nums ${
-                danger ? 'text-red-200' : 'text-white'
+                danger ? 'text-red-200' : 'text-slate-100'
               }`}
               style={{ fontSize: '7rem' }}
             >

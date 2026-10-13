@@ -66,7 +66,7 @@ export default function TablesPanel() {
               onClick={() => setSelectedId(t.id)}
               className={`text-left px-3 py-2 text-sm sm:border-b border-slate-800 truncate shrink-0 sm:w-full whitespace-nowrap ${
                 selectedId === t.id
-                  ? 'bg-slate-800 text-white'
+                  ? 'bg-slate-800 text-slate-100'
                   : 'text-slate-400 hover:bg-slate-900'
               }`}
               title={t.name}

@@ -37,7 +37,7 @@ export default function HelpModal({
 
         <div className="overflow-y-auto px-6 py-5 space-y-5 text-sm text-slate-300 leading-relaxed">
           <section>
-            <h3 className="text-base font-semibold text-white mb-1">What this is</h3>
+            <h3 className="text-base font-semibold text-slate-100 mb-1">What this is</h3>
             <p>
               A two-window initiative tracker for tabletop RPG sessions. The
               window you're in is the <b>DM panel</b> — you add combatants,
@@ -52,10 +52,13 @@ export default function HelpModal({
               local storage.
             </p>
             <p className="mt-2">
-              Prefer a darker table? The <b>🌙 Dark</b> / <b>☀️ Light</b> button
-              in the header switches between the parchment light theme and a warm
-              dark theme. Your choice is remembered, and the player window follows
-              along.
+              Prefer a different mood? The <b>theme picker</b> in the header
+              offers four palettes for the room you're playing in —
+              <b> Parchment</b> (bright rooms), <b>Ember</b> (warm dark,
+              burgundy &amp; gold), <b>Midnight</b> (cool deep dark) and
+              <b> Dusk</b> (a softer dark for indoor light). Your choice is
+              remembered, and the player window follows along (or picks its
+              own).
             </p>
             <p className="mt-2">
               On desktop, the <b>Hide panel</b> / <b>Show panel</b> button in the
@@ -66,7 +69,7 @@ export default function HelpModal({
           </section>
 
           <section>
-            <h3 className="text-base font-semibold text-white mb-1">
+            <h3 className="text-base font-semibold text-slate-100 mb-1">
               Opening the player view
             </h3>
             <p>
@@ -77,7 +80,7 @@ export default function HelpModal({
           </section>
 
           <section>
-            <h3 className="text-base font-semibold text-white mb-1">
+            <h3 className="text-base font-semibold text-slate-100 mb-1">
               Adding combatants
             </h3>
             <p>
@@ -100,7 +103,7 @@ export default function HelpModal({
           </section>
 
           <section>
-            <h3 className="text-base font-semibold text-white mb-1">
+            <h3 className="text-base font-semibold text-slate-100 mb-1">
               Library — campaigns, sessions & statblocks
             </h3>
             <p>
@@ -163,7 +166,7 @@ export default function HelpModal({
           </section>
 
           <section>
-            <h3 className="text-base font-semibold text-white mb-1">
+            <h3 className="text-base font-semibold text-slate-100 mb-1">
               Running turns
             </h3>
             <ul className="list-disc pl-5 space-y-1">
@@ -189,7 +192,7 @@ export default function HelpModal({
           </section>
 
           <section>
-            <h3 className="text-base font-semibold text-white mb-1">
+            <h3 className="text-base font-semibold text-slate-100 mb-1">
               Damage and healing
             </h3>
             <p>
@@ -220,7 +223,7 @@ export default function HelpModal({
           </section>
 
           <section>
-            <h3 className="text-base font-semibold text-white mb-1">
+            <h3 className="text-base font-semibold text-slate-100 mb-1">
               Lair & legendary actions
             </h3>
             <p>
@@ -245,7 +248,7 @@ export default function HelpModal({
           </section>
 
           <section>
-            <h3 className="text-base font-semibold text-white mb-1">
+            <h3 className="text-base font-semibold text-slate-100 mb-1">
               Triggers — injuries and beyond
             </h3>
             <p>
@@ -291,7 +294,7 @@ export default function HelpModal({
           </section>
 
           <section>
-            <h3 className="text-base font-semibold text-white mb-1">
+            <h3 className="text-base font-semibold text-slate-100 mb-1">
               Conditions
             </h3>
             <p>
@@ -305,7 +308,7 @@ export default function HelpModal({
           </section>
 
           <section>
-            <h3 className="text-base font-semibold text-white mb-1">
+            <h3 className="text-base font-semibold text-slate-100 mb-1">
               Strategy labels
             </h3>
             <p>
@@ -317,7 +320,7 @@ export default function HelpModal({
           </section>
 
           <section>
-            <h3 className="text-base font-semibold text-white mb-1">
+            <h3 className="text-base font-semibold text-slate-100 mb-1">
               Tables
             </h3>
             <p>
@@ -333,7 +336,7 @@ export default function HelpModal({
           </section>
 
           <section>
-            <h3 className="text-base font-semibold text-white mb-1">Dice</h3>
+            <h3 className="text-base font-semibold text-slate-100 mb-1">Dice</h3>
             <p>
               The <b>dice</b> tab has preset buttons (d4 – d100) and a
               freeform expression field that accepts things like{' '}
@@ -343,7 +346,7 @@ export default function HelpModal({
           </section>
 
           <section>
-            <h3 className="text-base font-semibold text-white mb-1">
+            <h3 className="text-base font-semibold text-slate-100 mb-1">
               Keyboard shortcuts
             </h3>
             <p className="mb-2">
@@ -402,7 +405,7 @@ export default function HelpModal({
           </section>
 
           <section>
-            <h3 className="text-base font-semibold text-white mb-1">
+            <h3 className="text-base font-semibold text-slate-100 mb-1">
               Save, import, reset
             </h3>
             <p>

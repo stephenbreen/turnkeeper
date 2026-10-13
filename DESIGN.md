@@ -23,7 +23,7 @@ Inter/Roboto, purple gradients, or flat neutral cards.
    the timer. Never leak DM data into the player window (this includes the
    synced store — see `SYNC_KEYS` in `store.ts`).
 3. **Theme, don't restyle.** Color flows through tokens (below). Adding a screen
-   should not add new raw hex. Both light and dark must stay legible.
+   should not add new raw hex. Every palette must stay legible.
 4. **Diegetic where it helps, plain where it counts.** Parchment/leather set the
    mood; controls stay obvious and high-contrast.
 
@@ -34,23 +34,26 @@ Inter/Roboto, purple gradients, or flat neutral cards.
 ### Mechanism
 
 The parchment palette is mapped onto Tailwind's **`slate`** (neutrals) and
-**`indigo`** (brand accent) scales via CSS variables. Toggling `.dark` on
-`<html>` swaps the variable values, flipping the whole app with **no component
-changes**. Variables are space-separated RGB triples so Tailwind's
-`/<alpha-value>` (e.g. `bg-slate-900/60`) keeps working.
+**`indigo`** (brand accent) scales via CSS variables. The active theme is a
+`data-theme` attribute on `<html>`; each theme swaps the variable values,
+flipping the whole app with **no component changes**. Variables are
+space-separated RGB triples so Tailwind's `/<alpha-value>` (e.g.
+`bg-slate-900/60`) keeps working.
 
-- Definitions: `:root` (light) and `.dark` (dark) in `src/index.css`.
+- Definitions: `:root` (Parchment — also the pre-paint default) plus one
+  `[data-theme='…']` block per theme (Ember, Midnight, Dusk) in `src/index.css`.
 - Scale → variable wiring: `tailwind.config.js`.
-- Runtime: `src/theme.ts` (`applyTheme`, `useTheme`), applied pre-paint in
-  `src/main.tsx`; toggle in `src/components/ThemeToggle.tsx`. The choice is a
-  per-window preference in `localStorage['turnkeeper-theme']` and syncs to the
-  player popout via the `storage` event.
+- Runtime: `src/theme.ts` (`THEMES`, `applyTheme`, `useTheme`), applied
+  pre-paint in `src/main.tsx`; picker in `src/components/ThemeSwitcher.tsx`.
+  The choice is a per-window preference in `localStorage['turnkeeper-theme']`
+  and syncs to the player popout via the `storage` event. Stored `light` /
+  `dark` values from the old toggle migrate to Parchment / Ember.
 
 ### Semantic roles (the golden rule)
 
 `slate` numbers are **inverted from Tailwind's convention** and are semantic:
 
-| Token | Role | Light | Dark |
+| Token | Role | Parchment | Ember |
 |---|---|---|---|
 | `slate-950` | page background | `#f0e0b8` parchment | `#16130f` warm near-black |
 | `slate-900` | cards / panels | `#e8d5a7` | `#221d17` |
@@ -63,7 +66,7 @@ changes**. Variables are space-separated RGB triples so Tailwind's
 
 Brand accent (`indigo`):
 
-| Token | Role | Light | Dark |
+| Token | Role | Parchment | Ember |
 |---|---|---|---|
 | `indigo-600` | primary action / statblock burgundy | `#7c1d1d` | `#962d2d` |
 | `indigo-300` | active-turn text | `#a02828` burgundy | `#d69696` warm rose |
@@ -71,9 +74,13 @@ Brand accent (`indigo`):
 | `indigo-900` | active accent block | `#e6c270` gold | `#785c28` dim gold |
 | `indigo-950` | active translucent bg | `#fbe9b4` | `#3a2f1a` |
 
+**Midnight** and **Dusk** keep the same semantic roles with Tailwind's stock
+numbers: Midnight is the classic cool palette (`slate-950` page + indigo
+accents), Dusk shifts the whole slate scale one step lighter for indoor light.
+
 ### Fixed brand colors (do not theme)
 
-Leather + burgundy read on both themes, so buttons are constant (`.btn`,
+Leather + burgundy read on all four palettes, so buttons are constant (`.btn`,
 `.btn-primary`, `.btn-danger` in `index.css`):
 
 - Leather `#5c4033` (neutral button), Burgundy `#7c1d1d` (primary),
@@ -82,7 +89,7 @@ Leather + burgundy read on both themes, so buttons are constant (`.btn`,
 ### Functional (status) colors
 
 These are **real Tailwind colors**, used as "dark chip" pairs (`bg-*-900` +
-`text-*-200`) or saturated fills, and are legible on both themes. Keep them
+`text-*-200`) or saturated fills, and are legible on every palette. Keep them
 semantic:
 
 - **Monster/NPC:** red (`bg-red-900 text-red-200`).
@@ -119,7 +126,8 @@ surface should use `slate-100/200/400`.
 
 - **Icons:** per-class adventurer glyphs + monster glyph (`CombatantIcon`);
   sparing emoji for chrome (⚔ brand, 📚 library, 📜 statblock, ⚠️ trigger
-  toast, 🐉 lair action, ⚡ legendary, ☾/☀ theme).
+  toast, 🐉 lair action, ⚡ legendary; the theme picker uses a colour swatch
+  chip instead of an emoji).
 - **Motion:** purposeful and rare. Announcement banner `injury-enter` +
   `injury-shake` (keyframes in `index.css`; historical names — the banner now
   carries lair actions and player-facing notes too); the draining
@@ -156,12 +164,13 @@ surface should use `slate-100/200/400`.
 ## 6. Extending
 
 1. Prefer an existing token. If you need a new themed role, add
-   `--foo` to **both** `:root` and `.dark` in `index.css` and reference it via an
+   `--foo` to **every** theme block in `index.css` (`:root` plus the three
+   `[data-theme]` blocks) and reference it via an
    arbitrary value (`text-[color:rgb(var(--foo))]`) or the mapped scale.
-2. Every new surface must be checked in **both** themes for contrast (aim ~4.5:1
-   for body text). The quick test: text on `slate-900`/`slate-950` should be
-   `slate-100/200`; accents should be `--sb-heading` or `indigo`, never a light
-   pastel on parchment.
+2. Every new surface must be checked in **every** palette for contrast (aim
+   ~4.5:1 for body text). The quick test: text on `slate-900`/`slate-950` should
+   be `slate-100/200`; accents should be `--sb-heading` or `indigo`, never a
+   light pastel on parchment.
 3. Keep player-facing surfaces large and word-based; keep DM data out of the
    player window and out of `SYNC_KEYS`.
 4. Update this document when tokens or component patterns change.
