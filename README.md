@@ -1,17 +1,48 @@
-# Turnkeeper
+<p align="center">
+  <img src="docs/media/logo.svg" width="96" height="96" alt="">
+</p>
 
-A two-panel, browser-only initiative tracker for tabletop RPG dungeon masters.
-One laptop, two windows: the DM drives from the primary window and a read-only
-player view is popped out onto a second monitor or TV.
+<h1 align="center">Turnkeeper</h1>
+
+<p align="center">
+  Initiative tracker for dungeon masters. Two windows, one fight, no backend.
+  <br>
+  <a href="https://stephenbreen.github.io/turnkeeper/"><b>Try it in your browser →</b></a>
+  ·
+  <a href="#features">Features</a>
+  ·
+  <a href="#architecture">How it works</a>
+</p>
+
+![The DM window mid-fight: initiative order, HP bars, a lair-action slot and a legendary-action reminder](docs/media/dm-view.png)
+
+One laptop, two windows. The DM drives from the primary window and a
+read-only player view gets popped out onto a second monitor or TV, with a
+giant countdown hourglass the far end of the table can read:
+
+![The player view in the Ember theme: status words instead of HP, conditions, and a 37-second hourglass](docs/media/player-view.png)
 
 No backend, no accounts, no SRD data. The DM types in the combatants they care
 about, the players see what they should see, and the two views stay in sync
-via `BroadcastChannel` in the same browser.
+via `BroadcastChannel` in the same browser. The
+[write-up](https://stephenbreen.github.io/writing/the-dm-tool-with-no-backend/)
+explains why that constraint turned out to be the product.
 
 > Inspired by the layout of [Kobold+](https://koboldplus.club/), but stripped
 > of SRD content and extended with per-turn timers, a configurable trigger
 > system, lair & legendary action support, DM-authored roll tables, and a
 > campaign manager for planning sessions.
+
+## Run a fight in a minute
+
+1. Open [the app](https://stephenbreen.github.io/turnkeeper/) (or run it
+   locally, see [Getting started](#getting-started)).
+2. **+ Add Combatant** for each PC and monster, with their initiative.
+3. Click **Player View ↗**, drag the popup to the TV, and leave it there.
+4. Press **Next ▶**. The timer, triggers and reminders take it from there.
+
+Everything saves to the browser as you go, so a refresh (or next week's
+session) picks up where you left off.
 
 ---
 
@@ -181,6 +212,7 @@ for the session.
 | `npm run build`    | Typecheck + production build into `dist/`      |
 | `npm run preview`  | Serve the built bundle locally                 |
 | `npm run typecheck`| Just `tsc --noEmit`                            |
+| `npm test`         | Vitest unit tests                              |
 
 ---
 
@@ -198,7 +230,8 @@ windows in lockstep. Everything below falls out of that constraint.
   next to state, automatic `localStorage` mirroring.
 - **BroadcastChannel** — browser-native cross-window messaging, no polyfill.
 
-Total runtime dependencies: `react`, `react-dom`, `zustand`. That's it.
+Total runtime dependencies: `react`, `react-dom`, `zustand`, and `js-yaml`
+for statblock imports. That's it.
 
 ### 2. Two views, one bundle
 
@@ -380,3 +413,8 @@ src/
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+---
+
+<sub>Made by [Stephen Breen](https://stephenbreen.github.io) in Cork, and
+stress-tested at [Cork D&D Club](https://corkdnd.com).</sub>
